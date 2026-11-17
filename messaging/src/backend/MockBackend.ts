@@ -17,6 +17,14 @@ import { normalizePhone } from "../util/phone";
 
 const CONFIDENCE_RANK = { exact: 0, alias: 1, fuzzy: 2 } as const;
 
+/** Real teammates. These phones use Maya's friends, but the bot addresses them by name. */
+const DEMO_STUDENT_NAMES: Record<string, string> = {
+  "+15550009105": "Tobi",
+  "+15550009104": "Otis",
+  "+15550009102": "Arden",
+  "+15550009103": "Jesse",
+};
+
 export class MockBackend implements Backend {
   private readonly users: User[];
   private readonly clubs: Club[];
@@ -24,8 +32,9 @@ export class MockBackend implements Backend {
   private readonly friendships: Friendship[];
   private readonly contacts: Contact[];
   private readonly intros = new Map<string, Intro>();
-  /** Extra real phones that should get Maya's demo graph when they text in. */
+  /** Phones that play Maya. They share her user id, so the intro remembers which handset asked. */
   private readonly mayaAliasPhones: Set<string>;
+  private readonly studentsByPhone = new Map<string, User>();
 
   constructor(env: NodeJS.ProcessEnv = {}) {
     const seed = buildSeed(env);
@@ -41,16 +50,64 @@ export class MockBackend implements Backend {
         .filter(Boolean)
         .map((phone) => normalizePhone(phone)),
     );
+    for (const club of this.clubs) this.ensureReachable(club.id);
   }
 
   async getUserByPhone(phone: string): Promise<User | null> {
     const normalized = normalizePhone(phone);
     const direct = this.users.find((user) => user.phone === normalized);
+    const named = DEMO_STUDENT_NAMES[normalized];
+    if (direct && !(named && direct.id === "maya")) return direct;
+    if (named) return this.ensureStudent(normalized);
     if (direct) return direct;
     if (this.mayaAliasPhones.has(normalized)) {
       return this.users.find((user) => user.id === "maya") ?? null;
     }
-    return null;
+    return this.ensureStudent(normalized);
+  }
+
+  /**
+   * A phone that is not already in the seed still gets Maya's accepted friends,
+   * so the demo works from any handset. Maya's own phone stays Maya.
+   * The connector lookup uses the seeded user when the phone matches one.
+   */
+  ensureStudent(phone: string): User {
+    const normalized = normalizePhone(phone);
+    const cached = this.studentsByPhone.get(normalized);
+    if (cached) return cached;
+
+    const knownName = DEMO_STUDENT_NAMES[normalized];
+    if (knownName) return this.studentWithMayaFriends(normalized, knownName);
+
+    const direct = this.users.find((user) => user.phone === normalized);
+    const maya = this.users.find((user) => user.id === "maya");
+    if (maya && (direct?.id === "maya" || this.mayaAliasPhones.has(normalized))) {
+      this.studentsByPhone.set(normalized, maya);
+      return maya;
+    }
+
+    return this.studentWithMayaFriends(normalized, "the student", { classYear: 2028, college: "Pierson" });
+  }
+
+  private studentWithMayaFriends(
+    phone: string,
+    name: string,
+    extras?: { classYear?: number; college?: string },
+  ): User {
+    const guest: User = {
+      id: `guest_${phone.replace(/\D/g, "")}`,
+      name,
+      phone,
+      classYear: extras?.classYear,
+      college: extras?.college,
+      suggestible: true,
+    };
+    this.users.push(guest);
+    for (const friendId of this.acceptedFriends("maya")) {
+      this.friendships.push({ a: guest.id, b: friendId, status: "accepted" });
+    }
+    this.studentsByPhone.set(phone, guest);
+    return guest;
   }
 
   async getUser(id: string): Promise<User | null> {
@@ -107,6 +164,11 @@ export class MockBackend implements Backend {
       if (rank !== 0) return rank;
       return a.distance - b.distance;
     });
+
+    if (hits.length === 0) {
+      const club = this.clubFromQuery(text, query);
+      return [{ club, confidence: "exact" }];
+    }
 
     return hits.slice(0, 3).map(({ club, confidence }) => ({ club, confidence }));
   }
@@ -223,6 +285,38 @@ export class MockBackend implements Backend {
       if (!latest || intro.createdAt > latest.createdAt) latest = intro;
     }
     return latest;
+  }
+
+  /** Jordan is the 1-hop friend and Sam is the board member, for every club. */
+  private ensureReachable(clubId: string): void {
+    this.ensureMember(clubId, "jordan", "member");
+    this.ensureMember(clubId, "sam", "board");
+  }
+
+  private ensureMember(clubId: string, userId: string, role: Role): void {
+    const existing = this.memberships.find((membership) => membership.clubId === clubId && membership.userId === userId);
+    if (existing) return;
+    this.memberships.push({ userId, clubId, role, source: "self" });
+  }
+
+  private clubFromQuery(raw: string, query: string): Club {
+    const id = `club_${query.replace(/\s+/g, "_").slice(0, 48)}`;
+    const existing = this.clubs.find((club) => club.id === id);
+    if (existing) return existing;
+    const name = raw
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
+    const club: Club = {
+      id,
+      name: name || "that club",
+      aliases: [query],
+      category: "student group",
+      blurb: "A Yale student group.",
+    };
+    this.clubs.push(club);
+    this.ensureReachable(club.id);
+    return club;
   }
 
   private acceptedFriends(userId: string): string[] {

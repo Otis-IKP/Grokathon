@@ -53,6 +53,8 @@ export interface Intro {
   message: string;
   status: "drafted" | "sent" | "accepted" | "declined";
   createdAt: number;
+  /** Phone that asked for this intro. Set for alias phones that share Maya's user id. */
+  requesterPhone?: string;
 }
 
 export interface ClubMatch {

@@ -37,6 +37,14 @@ describe("resolveClub", () => {
     expect(typo?.confidence).toBe("fuzzy");
   });
 
+  it("creates a club when the name is new and still finds Jordan", async () => {
+    const created = await top("sketch comedy");
+    expect(created?.confidence).toBe("exact");
+    expect(created?.club.name).toBe("Sketch Comedy");
+    const paths = await backend.findPaths("maya", created?.club.id ?? "");
+    expect(paths[0]?.connector.name).toBe("Jordan Hale");
+  });
+
   it("returns at most 3 matches", async () => {
     const matches = await backend.resolveClub("yale");
     expect(matches.length).toBeLessThanOrEqual(3);

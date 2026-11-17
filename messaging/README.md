@@ -23,24 +23,27 @@ Both should return `{"ok":true,"backend":"mock","dryRun":false}`. If the second 
 
 ### Who texts what
 
-The real numbers are in `messaging/.env` on this Mac. That file is gitignored.
+Any phone can text the bot, and any club name works. A number that is not already in the seed gets Maya's friends, and a club the bot has not heard of still resolves, with Jordan Hale as the warm path. The accepted or declined text goes back to the phone that asked, even when that phone is sharing Maya's graph.
+
+Tobi, Otis, and Arden are addressed by those names. Jesse is addressed as Jesse when he asks for a club. When he replies YES or NO he is the connector in the story, Jordan Hale. The name map is `DEMO_STUDENT_NAMES` in `src/backend/MockBackend.ts`. Add a teammate there if the bot is using the wrong name.
+
+The real numbers are in `messaging/.env` on the demo Mac. That file is gitignored. Do not commit it, and do not paste the keys into the public repo.
 
 | Role | Env var | What they do |
 | --- | --- | --- |
-| Maya, the student | `DEMO_MAYA_PHONE` | Texts the bot: "I want to be on YSIG", then "yes", then "send" |
-| Extra Maya phones | `DEMO_ALSO_PHONES` | Same student flow, Maya's graph |
+| Whoever is asking | any phone, or `DEMO_ALSO_PHONES` | Texts the bot with a club, then "yes", then "send" |
 | Jordan, the connector | `DEMO_JORDAN_PHONE` | Gets the intro text and replies YES or NO |
 
-The NEPO number they text is `SENDBLUE_FROM_NUMBER` in that same file. On the free Sendblue plan, every phone in the table has to be added with `sendblue add-contact +1...` and has to text that number "hi" once before the bot can text them back. A phone that has not done this will not get the intro.
+The NEPO number they text is `SENDBLUE_FROM_NUMBER` in that same file. On the free Sendblue plan, a phone has to be added with `sendblue add-contact +1...` and has to text that number once before the bot can text it back. A phone that has not done this can still text in, but the reply or the intro will not arrive.
 
 ### The demo, in order
 
-1. From Maya's phone, text the NEPO number: `I want to be on YSIG`
+1. From any phone, text the NEPO number with a club. "I want to be on YSIG" is the example. "I want to be on sketch comedy" works too.
 2. Reply `yes` when it offers to draft the intro.
 3. Tap the link in the next text. Messages should open with the draft already filled in. That link is `PUBLIC_BASE_URL/d/<introId>`, which redirects to an `sms:` link. It only works while the tunnel in `PUBLIC_BASE_URL` is the one currently running.
 4. Reply `send`.
 5. From Jordan's phone, reply `YES`.
-6. Maya's phone should get the accepted text.
+6. The phone that asked should get the accepted text.
 
 Between runs, clear the in-memory session. The secret is `WEBHOOK_SECRET` in `.env`:
 
@@ -124,4 +127,20 @@ User shape: `{ id, name, phone, classYear?, college?, suggestible }`.
 5. Set `DEMO_MAYA_PHONE` and `DEMO_JORDAN_PHONE` to real team phones, then `npm run dev`.
 6. Rehearse: "I want to be on YSIG" → "yes" → "send" → Jordan replies "YES" → Maya gets the accepted text. Also test the web chat at `/`.
 
-Seed story, all fictional: Maya Chen (`+15550000001`) asks about YSIG. Jordan Hale (`+15550000002`) is a 1-hop analyst. Priya is not in YSIG and knows board member Sam. YPU is one 2-hop path. Whiffenpoofs has none.
+Seed story, all fictional: Maya Chen (`+15550000001`) asks about YSIG. Jordan Hale (`+15550000002`) is a 1-hop analyst. Priya is not in YSIG and knows board member Sam. In the live mock, Jordan is also a member of every club and Sam is on the board, so a demo ask about any club still has a real connector to text.
+
+## Change it
+
+Open this repo in Cursor or Claude and point it at `messaging/`. Grok is the only model, through `https://api.x.ai/v1`. Leave `bot/` alone.
+
+| Change | Where |
+| --- | --- |
+| What the bot says, and whose name it uses | `src/agent/systemPrompt.ts` and `DEMO_STUDENT_NAMES` in `src/backend/MockBackend.ts` |
+| Which phone is Maya, Jordan, or an extra student | `messaging/.env` on the demo Mac (`DEMO_MAYA_PHONE`, `DEMO_JORDAN_PHONE`, `DEMO_ALSO_PHONES`) |
+| The fictional friends and clubs | `src/backend/seed.ts` |
+| A club the bot has never heard of | `clubFromQuery` in `src/backend/MockBackend.ts` |
+| When "send" is allowed | `send_intro` in `src/agent/tools.ts` |
+| Where the YES/NO reply is delivered | `requesterPhone` on the intro, set in `save_intro_draft`, read in `maybeHandleConnectorReply` |
+| Otis's real API instead of the mock graph | `BACKEND_MODE=http` and `BACKEND_URL`. The contract is the list above. |
+
+`docs/TEAM_HANDOFF.md` is the longer note for whoever is finishing the demo. The shared Drive copy, with the phone map, is [NEPO bot handoff](https://docs.google.com/document/d/17YLnLekIi-4NvDZzLEvBV5DRbs4_WcV71G8LaDs5AUw/edit). Phone numbers stay out of this public repo.
