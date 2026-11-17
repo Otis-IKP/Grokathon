@@ -9,7 +9,7 @@ Luma: https://luma.com/dis51jq2
 
 | Person | Role |
 |--------|------|
-| **Tobi** | Grok bot + iMessage integration (`bot/`) |
+| **Tobi** | Grok bot + iMessage (`messaging/`). `bot/` is an older scaffold. Do not demo it. |
 | **Otis** | App + backend API |
 | **Arden** | Website |
 
@@ -25,18 +25,8 @@ Student texts Grok: "I want to be on YSIG." NEPO finds the warmest friend-path i
 - `shared/api_contract.md` — tool endpoints Tobi ↔ Otis
 - Drive folder: https://drive.google.com/drive/folders/1KoXnodnMgJ77r27w7-A_eiJQwqsbWnNg
 
-## Tobi: start here
+## Demo bot
 
-```bash
-cd "/Users/tobibamisaye/Uni stuff/Hackathons/grokathon/bot"
-cp .env.example .env   # if not already
-# add XAI_API_KEY (Grok only — required for prize eligibility)
-source .venv/bin/activate
-uv run python scripts/repl.py
-```
-
-1. Paste full system prompt → `bot/src/nepo_bot/prompts/system.md`
-2. Keep `USE_STUB_BACKEND=true` until Otis API is up
-3. Wire iMessage provider when ready (`MESSAGING_PROVIDER`)
+The live bot is `messaging/`. Read `messaging/README.md` before presenting. It is not hosted. It runs on Tobi's Mac behind a Cloudflare tunnel, and the README has the health check, the text script, and how to bring the tunnel back if it dies.
 
 **Rule for tonight:** use **only Grok** via `api.x.ai` (no Claude/OpenAI models).

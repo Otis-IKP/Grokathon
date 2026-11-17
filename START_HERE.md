@@ -1,6 +1,6 @@
 # START HERE (Tobi)
 
-Hackathon is **tonight** at Tsai CITY, 5–9 PM. Your lane is the **Grok iMessage bot**.
+Hackathon is **tonight** at Tsai CITY, 5–9 PM. Your lane is the **Grok iMessage bot** in `messaging/`. `bot/` is the older scaffold. The presenting notes are in `messaging/README.md`.
 
 ## Already done for you
 
