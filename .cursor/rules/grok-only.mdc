@@ -1,0 +1,13 @@
+---
+description: Grokathon NEPO — Grok only
+globs:
+  - "**/*"
+---
+
+# Grokathon constraints
+
+- Use **only Grok** via xAI (`https://api.x.ai/v1`, `XAI_API_KEY`). Do not add Claude, OpenAI, Gemini, or other LLM providers.
+- Tobi owns `bot/` (iMessage + Grok agent). Otis owns backend/app. Arden owns website.
+- Prefer stub backend (`USE_STUB_BACKEND=true`) until Otis API is live; keep tool names stable: `resolve_club`, `find_paths`, `draft_intro`, `send_message`, `lookup_user`.
+- System prompt lives in `bot/src/nepo_bot/prompts/system.md`.
+- No Campus Shape references. Keep student-voice drafts, not recruiter voice.

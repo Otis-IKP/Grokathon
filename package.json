@@ -55,4 +55,13 @@
     "vitest": "^5.1.0"
   },
   "packageManager": "pnpm@12.21.0"
+  "name": "grokathon",
+  "private": true,
+  "scripts": {
+    "test": "npm test --prefix messaging",
+    "typecheck": "npm run typecheck --prefix messaging",
+    "dev": "npm run dev --prefix messaging",
+    "start": "npm run start --prefix messaging",
+    "simulate": "npm run simulate --prefix messaging --"
+  }
 }
