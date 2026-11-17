@@ -2,7 +2,72 @@
 
 A student texts the NEPO number, for example "I want to be on YSIG". The bot finds the warmest path through their friends, drafts an intro, and either hands back a one-tap iMessage draft or texts the connector after the student replies "send".
 
-This folder is the Grok + iMessage bot. Otis's app can replace the in-memory graph by setting `BACKEND_MODE=http`. Grok is called only through `https://api.x.ai/v1`.
+**This folder is the bot to demo.** `bot/` is an older Python scaffold. Do not start that one.
+
+Otis's app can replace the in-memory graph by setting `BACKEND_MODE=http`. Grok is called only through `https://api.x.ai/v1`.
+
+## Presenting tonight
+
+There is no hosted server. The bot is one Node process on Tobi's Mac, and Sendblue reaches it through a quick Cloudflare tunnel. The tunnel URL dies when that process dies, and a new URL will not match the webhook or `PUBLIC_BASE_URL` until someone repeats the tunnel step below.
+
+It keeps working only if this Mac stays plugged in with the lid open. `caffeinate -dimsu` is already running, but closing the lid still sleeps the machine and the demo stops. Taking the laptop home stops it too.
+
+Check that it is still up:
+
+```bash
+curl http://127.0.0.1:3000/health
+curl https://matters-destiny-basket-patch.trycloudflare.com/health
+```
+
+Both should return `{"ok":true,"backend":"mock","dryRun":false}`. If the second one fails, the tunnel is dead even if the first one works. Do the tunnel step again. Do not invent a new host. The conversation, the pending intro, and the draft link all live in this one process.
+
+### Who texts what
+
+The real numbers are in `messaging/.env` on this Mac. That file is gitignored.
+
+| Role | Env var | What they do |
+| --- | --- | --- |
+| Maya, the student | `DEMO_MAYA_PHONE` | Texts the bot: "I want to be on YSIG", then "yes", then "send" |
+| Extra Maya phones | `DEMO_ALSO_PHONES` | Same student flow, Maya's graph |
+| Jordan, the connector | `DEMO_JORDAN_PHONE` | Gets the intro text and replies YES or NO |
+
+The NEPO number they text is `SENDBLUE_FROM_NUMBER` in that same file. On the free Sendblue plan, every phone in the table has to be added with `sendblue add-contact +1...` and has to text that number "hi" once before the bot can text them back. A phone that has not done this will not get the intro.
+
+### The demo, in order
+
+1. From Maya's phone, text the NEPO number: `I want to be on YSIG`
+2. Reply `yes` when it offers to draft the intro.
+3. Tap the link in the next text. Messages should open with the draft already filled in. That link is `PUBLIC_BASE_URL/d/<introId>`, which redirects to an `sms:` link. It only works while the tunnel in `PUBLIC_BASE_URL` is the one currently running.
+4. Reply `send`.
+5. From Jordan's phone, reply `YES`.
+6. Maya's phone should get the accepted text.
+
+Between runs, clear the in-memory session. The secret is `WEBHOOK_SECRET` in `.env`:
+
+```bash
+curl -X POST "http://127.0.0.1:3000/admin/reset?secret=THE_WEBHOOK_SECRET"
+```
+
+Web fallback, same process, same tunnel: open `PUBLIC_BASE_URL/` and type Maya's real phone, not the fictional `+15550000001`.
+
+### If the tunnel or the bot died
+
+From `messaging/`, with the existing `.env` still on this Mac:
+
+```bash
+npm run dev
+npx cloudflared tunnel --url http://localhost:3000
+```
+
+Copy the new `https://….trycloudflare.com` URL. Then:
+
+```bash
+sendblue webhooks add --type receive "https://NEW_URL/webhooks/sendblue?secret=THE_WEBHOOK_SECRET"
+```
+
+Put that origin in `PUBLIC_BASE_URL` with no trailing slash, and restart `npm run dev` so it reloads `.env`. `tsx watch` does not reload env by itself. Leave cloudflared running. Do not run `sendblue webhooks set-receive`. That command does not exist.
+
+Keys are already in `.env`: `XAI_API_KEY`, `SENDBLUE_API_KEY_ID`, `SENDBLUE_API_SECRET`. Do not commit that file. `DRY_RUN` must stay `false` for real iMessage.
 
 ## Setup
 
