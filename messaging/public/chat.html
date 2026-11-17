@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>NEPO</title>
+    <style>
+      body { font-family: sans-serif; margin: 1.5rem; max-width: 40rem; }
+      #log { list-style: none; padding: 0; }
+      #log li { margin: 0.4rem 0; }
+      form { display: flex; gap: 0.5rem; margin-top: 1rem; }
+      input { flex: 1; min-height: 2.75rem; padding: 0.4rem 0.6rem; }
+      button { min-height: 2.75rem; padding: 0.4rem 0.9rem; }
+    </style>
+  </head>
+  <body>
+    <h1>NEPO</h1>
+    <label>Your phone <input id="phone" value="+15550000001" /></label>
+    <ul id="log"></ul>
+    <form id="form">
+      <input id="text" placeholder="I want to be on YSIG" autocomplete="off" />
+      <button type="submit">Send</button>
+    </form>
+    <script>
+      const log = document.querySelector("#log");
+      const form = document.querySelector("#form");
+      const phone = document.querySelector("#phone");
+      const text = document.querySelector("#text");
+
+      function add(who, body) {
+        const item = document.createElement("li");
+        item.textContent = who + ": " + body;
+        log.append(item);
+      }
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const message = text.value;
+        if (!message.trim()) return;
+        add("You", message);
+        text.value = "";
+        const response = await fetch("/chat", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ phone: phone.value, text: message }),
+        });
+        const data = await response.json();
+        for (const reply of data.replies || []) add("NEPO", reply);
+      });
+    </script>
+  </body>
+</html>
