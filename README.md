@@ -57,8 +57,9 @@ For real data set `MOCK_EXTERNAL=0` and fill in:
 - `APP_URL` — Yale CAS redirects back to `{APP_URL}/api/auth/cas/callback`. If CAS refuses the service URL
   in some environment, keep using `DEV_LOGIN_ENABLED=1` locally; it is always off when `NODE_ENV=production`.
 
-Neither external API has been called with a real key yet (none was available while building). On first
-contact, check the two points flagged under "Not yet verified" below.
+Yalies has been checked against the live API (2026-11-17): the field names match `src/server/yalies/types.ts`,
+`page` is 0-based, `page_size: 100` is accepted, and the client drops the phone, address, birthday and
+friend/like data the API returns. xAI has not been called with a real key yet; see "Not yet verified" below.
 
 ## Database
 
@@ -126,8 +127,6 @@ contact, check the two points flagged under "Not yet verified" below.
 These need real credentials or a real phone, which were not available while building:
 
 - **Yale CAS** sign-in against `secure.its.yale.edu` (ticket parsing and the service URL are unit-tested).
-- **Yalies** live responses: field names and whether `page` really is 0-based. The client logs the field
-  names of the first real response in development so they can be compared with `src/server/yalies/types.ts`.
 - **xAI** live calls: the request shape follows the Responses API docs; citations are read from the
   top-level `citations` array and from `url_citation` annotations. Confirm on the first real run that
   evidence URLs survive the integrity check (look at an agent run in `/admin`).
