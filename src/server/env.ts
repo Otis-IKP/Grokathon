@@ -27,7 +27,7 @@ const schema = z.object({
   XAI_MODEL: z.string().default("grok-4.7"),
   XAI_MODEL_FAST: optionalString,
   BOT_API_SECRET: optionalString,
-  BOT_PHONE_DISPLAY: z.string().default("+1 203 555 0100"),
+  BOT_PHONE_DISPLAY: z.string().default("+1 645 243 7121"),
   ADMIN_NETIDS: z
     .string()
     .default("")
