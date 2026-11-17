@@ -1,0 +1,279 @@
+[
+  {
+    "type": "function",
+    "name": "whoami",
+    "description": "Look up the NEPO user for a phone number. Call this at the start of every conversation, before anything else. If it fails with user_not_linked, the texter has no linked account: if their message is a 6-digit number call link_phone, otherwise tell them to sign up in the NEPO app and link their phone there.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "phone": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 30,
+          "description": "The texter's phone number, as received from iMessage. Any common format; E.164 preferred, e.g. +12035550101."
+        }
+      },
+      "required": [
+        "phone"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "type": "function",
+    "name": "link_phone",
+    "description": "Link the texter's phone number to their NEPO account. Call this when a number that whoami does not recognise texts a 6-digit number. On invalid_code or code_expired, tell them to get a fresh code in the app.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "phone": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 30,
+          "description": "The texter's phone number, as received from iMessage. Any common format; E.164 preferred, e.g. +12035550101."
+        },
+        "code": {
+          "type": "string",
+          "pattern": "^\\d{6}$",
+          "description": "The 6-digit code the user texted."
+        }
+      },
+      "required": [
+        "phone",
+        "code"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "type": "function",
+    "name": "resolve_club",
+    "description": "Turn the club phrase in the user's message into a known club. Call this whenever the user names a club they want to join, before find_paths. If `club` is null, ask the user to choose among `candidates` (\"Did you mean…?\") and call again with their choice; if there are no candidates, say NEPO does not know that club yet.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "description": "The club phrase from the user's message, e.g. \"YSIG\" or \"the Dramat\"."
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "type": "function",
+    "name": "find_paths",
+    "description": "Find the friends best placed to introduce the user to a club. Call this once the club is resolved. Reply with each result's `why` sentence. If `results` is empty, use `empty_reason`: no_friends → suggest adding friends first; no_known_members → NEPO does not have that club's roster yet; no_connection → none of their friends are connected to it yet; already_member → they are already in it. If `pending_research` is true, more paths may appear if you call again in about a minute.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "phone": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 30,
+          "description": "The texter's phone number, as received from iMessage. Any common format; E.164 preferred, e.g. +12035550101."
+        },
+        "club_id": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "description": "club.id from resolve_club."
+        },
+        "limit": {
+          "description": "How many paths to return. Default 3, max 5.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5
+        }
+      },
+      "required": [
+        "phone",
+        "club_id"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "type": "function",
+    "name": "draft_intro",
+    "description": "Draft the message the user would send a connector to ask for an introduction. Call this after the user picks one of the paths from find_paths, then show them the draft and ask whether to send it or change it.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "phone": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 30,
+          "description": "The texter's phone number, as received from iMessage. Any common format; E.164 preferred, e.g. +12035550101."
+        },
+        "search_id": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "description": "The search_id returned by find_paths."
+        },
+        "connector_netid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40,
+          "description": "results[].connector.netid of the connector the user chose, from find_paths."
+        },
+        "tone": {
+          "type": "string",
+          "enum": [
+            "casual",
+            "polite"
+          ],
+          "description": "casual (default) for a close friend, polite for someone they know less well."
+        },
+        "note": {
+          "description": "Anything the user wants worked into the message.",
+          "type": "string",
+          "maxLength": 300
+        }
+      },
+      "required": [
+        "phone",
+        "search_id",
+        "connector_netid"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "type": "function",
+    "name": "create_intro",
+    "description": "Record the intro once the user approves the message (for example by saying \"send\"). This does not send anything: sending is done by you or by the user. The returned `response_url` is a link where the connector can accept or decline in NEPO; you may append it to the outgoing text. Call mark_intro_sent after the message has gone out.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "phone": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 30,
+          "description": "The texter's phone number, as received from iMessage. Any common format; E.164 preferred, e.g. +12035550101."
+        },
+        "search_id": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "description": "The search_id returned by find_paths."
+        },
+        "connector_netid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40,
+          "description": "results[].connector.netid of the connector the user chose, from find_paths."
+        },
+        "target_netid": {
+          "description": "results[].target.person.netid for a 2-hop path; omit for a 1-hop path.",
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 40
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000,
+          "description": "The exact message the user approved."
+        }
+      },
+      "required": [
+        "phone",
+        "search_id",
+        "connector_netid",
+        "message"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "type": "function",
+    "name": "mark_intro_sent",
+    "description": "Mark an intro as sent. Call this right after the message goes out, whether you sent it or the user confirmed sending it themselves. The intro then appears in the connector's NEPO inbox.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "phone": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 30,
+          "description": "The texter's phone number, as received from iMessage. Any common format; E.164 preferred, e.g. +12035550101."
+        },
+        "intro_id": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "description": "intro_id returned by create_intro."
+        }
+      },
+      "required": [
+        "phone",
+        "intro_id"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "type": "function",
+    "name": "list_intros",
+    "description": "List the user's recent intros and their status. Call this when the user asks whether someone replied or what happened to an intro. A status of declined should be relayed gently as \"not right now\", with no reason.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "phone": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 30,
+          "description": "The texter's phone number, as received from iMessage. Any common format; E.164 preferred, e.g. +12035550101."
+        }
+      },
+      "required": [
+        "phone"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "type": "function",
+    "name": "add_friend",
+    "description": "Find someone in the Yale directory to add as a friend. Call it first without `confirm` to get matches; if there is one `strong_match`, check it with the user (name, college, class year) and call again with confirm: true to create the request. If there are several matches, ask the user which one they mean. If the person is not on NEPO yet, the response includes an invite link for the user to send themselves.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "phone": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 30,
+          "description": "The texter's phone number, as received from iMessage. Any common format; E.164 preferred, e.g. +12035550101."
+        },
+        "query": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80,
+          "description": "The friend's name as the user wrote it."
+        },
+        "confirm": {
+          "description": "Pass true only after the user has confirmed the single match; the request is then created.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "phone",
+        "query"
+      ],
+      "additionalProperties": false
+    }
+  }
+]

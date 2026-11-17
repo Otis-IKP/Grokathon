@@ -1,0 +1,22 @@
+[
+  { "name": "Yale Student Investment Group", "short_name": "YSIG", "aliases": ["YSIG"], "category": "finance", "description": "Student-run investment group managing a real portfolio and teaching fundamental analysis." },
+  { "name": "Yale Undergraduate Consulting Group", "short_name": "YUCG", "aliases": ["YUCG"], "category": "consulting", "description": "Undergraduate consulting group working with companies and nonprofits." },
+  { "name": "Yale Entrepreneurial Society", "short_name": "YES", "aliases": ["YES"], "category": "tech", "description": "Community for student founders and builders." },
+  { "name": "Yale Daily News", "short_name": "YDN", "aliases": ["YDN", "the News"], "category": "publication", "description": "The oldest college daily newspaper in the United States." },
+  { "name": "Yale Political Union", "short_name": "YPU", "aliases": ["YPU", "the Union"], "category": "politics", "description": "Debating society of political parties across the spectrum." },
+  { "name": "Yale College Council", "short_name": "YCC", "aliases": ["YCC"], "category": "politics", "description": "Undergraduate student government." },
+  { "name": "Yale International Relations Association", "short_name": "YIRA", "aliases": ["YIRA"], "category": "politics", "description": "Model UN conferences, travel teams and international affairs programming." },
+  { "name": "Yale Computer Society", "short_name": "y/cs", "aliases": ["y/cs", "YCS"], "category": "tech", "description": "Students building software for the Yale community." },
+  { "name": "Yale Debate Association", "short_name": "YDA", "aliases": ["YDA", "Yale Debate"], "category": "politics", "description": "Competitive parliamentary debate team." },
+  { "name": "Yale Mock Trial Association", "short_name": "Mock Trial", "aliases": ["Mock Trial"], "category": "politics", "description": "Competitive mock trial teams." },
+  { "name": "The Yale Whiffenpoofs", "short_name": "Whiffenpoofs", "aliases": ["Whiffenpoofs", "Whiffs"], "category": "arts", "description": "The oldest collegiate a cappella group." },
+  { "name": "Yale Dramatic Association", "short_name": "the Dramat", "aliases": ["the Dramat", "Dramat"], "category": "arts", "description": "Undergraduate theatre organisation producing a full season each year." },
+  { "name": "Yale Scientific Magazine", "short_name": "YSM", "aliases": ["Yale Scientific", "YSM"], "category": "publication", "description": "Undergraduate science publication." },
+  { "name": "The Yale Herald", "short_name": "the Herald", "aliases": ["the Herald", "Herald"], "category": "publication", "description": "Weekly undergraduate arts and culture publication." },
+  { "name": "The Yale Record", "short_name": "the Record", "aliases": ["the Record", "Record"], "category": "publication", "description": "College humour magazine." },
+  { "name": "Yale Undergraduate Aerospace Association", "short_name": "YUAA", "aliases": ["YUAA"], "category": "tech", "description": "Student engineers building rockets, planes and satellites." },
+  { "name": "Yale Glee Club", "short_name": "Glee Club", "aliases": ["Glee Club"], "category": "arts", "description": "Yale's principal undergraduate mixed chorus." },
+  { "name": "Yale Symphony Orchestra", "short_name": "YSO", "aliases": ["YSO"], "category": "arts", "description": "Undergraduate symphony orchestra." },
+  { "name": "Dwight Hall at Yale", "short_name": "Dwight Hall", "aliases": ["Dwight Hall"], "category": "service", "description": "Center for public service and social justice." },
+  { "name": "TEDxYale", "short_name": "TEDxYale", "aliases": ["TEDx", "TEDx Yale"], "category": "other", "description": "Independently organised TED event at Yale." }
+]

@@ -1,0 +1,21 @@
+{
+  "output": {
+    "roster_url": "https://invented.example/roster",
+    "as_of": null,
+    "website": null,
+    "members": [
+      {
+        "full_name": "Alice Roster",
+        "role_title": "President",
+        "is_board": true,
+        "class_year": null,
+        "college": null,
+        "quote": "Alice Roster, President"
+      }
+    ],
+    "notes": ""
+  },
+  "citations": [
+    "https://somewhere-else.example/"
+  ]
+}

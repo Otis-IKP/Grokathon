@@ -1,0 +1,61 @@
+{
+  "output": {
+    "roster_url": "https://rosterclub.example/team",
+    "as_of": null,
+    "website": "https://rosterclub.example",
+    "members": [
+      {
+        "full_name": "Alice Roster",
+        "role_title": "President",
+        "is_board": true,
+        "class_year": null,
+        "college": null,
+        "quote": "Alice Roster, President"
+      },
+      {
+        "full_name": "Bob Member",
+        "role_title": null,
+        "is_board": false,
+        "class_year": null,
+        "college": null,
+        "quote": "Bob Member, Member"
+      },
+      {
+        "full_name": "Sam Wright",
+        "role_title": "Analyst",
+        "is_board": false,
+        "class_year": null,
+        "college": null,
+        "quote": "Sam Wright, Analyst"
+      },
+      {
+        "full_name": "Sam Wright",
+        "role_title": "Editor",
+        "is_board": false,
+        "class_year": 2028,
+        "college": null,
+        "quote": "Sam Wright, Editor"
+      },
+      {
+        "full_name": "Ghost Person",
+        "role_title": "Treasurer",
+        "is_board": true,
+        "class_year": null,
+        "college": null,
+        "quote": "Ghost Person, Treasurer"
+      },
+      {
+        "full_name": "Hidden Student",
+        "role_title": "Member",
+        "is_board": false,
+        "class_year": null,
+        "college": null,
+        "quote": "Hidden Student, Member"
+      }
+    ],
+    "notes": "Board and members listed."
+  },
+  "citations": [
+    "https://rosterclub.example/team"
+  ]
+}

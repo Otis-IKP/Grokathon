@@ -1,0 +1,11 @@
+{
+  "output": {
+    "verdict": "not_found",
+    "confidence": 0.3,
+    "role_found": null,
+    "is_board": null,
+    "evidence": [],
+    "reasoning": "Searched the club site and campus news and found no public list naming this student. Most general members are never listed publicly."
+  },
+  "citations": []
+}

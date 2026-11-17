@@ -1,0 +1,19 @@
+{
+  "output": {
+    "verdict": "confirmed",
+    "confidence": 0.9,
+    "role_found": "Analyst",
+    "is_board": false,
+    "evidence": [
+      {
+        "url": "https://www.linkedin.com/in/val-weak",
+        "quote": "Member",
+        "source_type": "club_site"
+      }
+    ],
+    "reasoning": "test"
+  },
+  "citations": [
+    "https://www.linkedin.com/in/val-weak"
+  ]
+}
