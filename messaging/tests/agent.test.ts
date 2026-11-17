@@ -83,24 +83,22 @@ describe("agent loop", () => {
     expect(replies).toEqual(["Sorry, I got tangled up. Can you rephrase?"]);
   });
 
-  it("sends unknown phones to sign up and does not call Grok", async () => {
+  it("lets an unknown phone talk to Grok instead of sending them to sign up", async () => {
     let calls = 0;
     setGrokClientForTests({
       chat: {
         completions: {
           create: async () => {
             calls += 1;
-            return { choices: [{ message: { content: "should not run" } }] };
+            return { choices: [{ message: { content: "Which club?" } }] };
           },
         },
       },
     });
 
     const replies = await handleMessage("+15559999999", "I want to be on YSIG");
-    expect(calls).toBe(0);
-    expect(replies).toEqual([
-      "Hey! I'm NEPO. I help you get warm intros to Yale clubs through people you already know. Sign up here first: https://example.com/signup",
-    ]);
+    expect(calls).toBe(1);
+    expect(replies).toEqual(["Which club?"]);
   });
 
   it("does not text the connector until send arrives on a later turn", async () => {
@@ -173,5 +171,60 @@ describe("agent loop", () => {
       "+15550000001 Jordan Hale accepted your intro request for Yale Student Investment Group! They'll reach out.",
     ]);
     expect((await backend.getIntro(intro.id))?.status).toBe("accepted");
+  });
+
+  it("texts the alias phone that requested the intro, not Maya's main phone", async () => {
+    const mayaPhone = "+15550000001";
+    const aliasPhone = "+15550000999";
+    const jordanPhone = "+15550000002";
+    const backend = new MockBackend({
+      DEMO_MAYA_PHONE: mayaPhone,
+      DEMO_ALSO_PHONES: aliasPhone,
+    });
+    setBackend(backend);
+    const outbound: string[] = [];
+    const seenByGrok: string[] = [];
+    setOutboundObserver((to, content) => outbound.push(`${to} ${content}`));
+    let step = 0;
+    setGrokClientForTests({
+      chat: {
+        completions: {
+          create: async (body) => {
+            seenByGrok.push(JSON.stringify(body.messages));
+            const messages = seenByGrok[seenByGrok.length - 1] ?? "";
+            const introId = messages.match(/intro_[0-9a-f-]{36}/i)?.[0];
+            if (!messages.includes('"content":"send"')) {
+              step += 1;
+              if (step === 1) return toolCall("a1", "find_paths", { clubId: "ysig" });
+              if (step === 2) {
+                return toolCall("a2", "save_intro_draft", {
+                  connectorId: "jordan",
+                  clubId: "ysig",
+                  message: "Hey Jordan, want to grab coffee about YSIG?",
+                });
+              }
+              if (step === 3) return toolCall("a3", "send_intro", { introId });
+              return { choices: [{ message: { content: "Here's the draft. Reply send and I'll text Jordan." } }] };
+            }
+            if (!messages.includes('"ok":true')) return toolCall("a4", "send_intro", { introId });
+            return { choices: [{ message: { content: "Sent it to Jordan." } }] };
+          },
+        },
+      },
+    });
+
+    await handleMessage(aliasPhone, "yes");
+    await handleMessage(aliasPhone, "send");
+    expect(outbound.some((line) => line.startsWith(jordanPhone))).toBe(true);
+
+    outbound.length = 0;
+    const replies = await handleMessage(jordanPhone, "YES");
+    expect(replies).toEqual(["Thanks, I've let Maya Chen know."]);
+    expect(outbound).toEqual([
+      `${aliasPhone} Jordan Hale accepted your intro request for Yale Student Investment Group! They'll reach out.`,
+    ]);
+    expect(outbound.some((line) => line.startsWith(mayaPhone))).toBe(false);
+    expect(seenByGrok.join("\n")).not.toContain("requesterPhone");
+    expect(seenByGrok.join("\n")).not.toContain(aliasPhone);
   });
 });

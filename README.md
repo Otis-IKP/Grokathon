@@ -23,6 +23,8 @@ Student texts Grok: "I want to be on YSIG." NEPO finds the warmest friend-path i
 - `docs/yale-warm-intros-plan.md` — short brief
 - `docs/otis-imessage-prompt.md` — Otis prompt for iMessage connector (was empty when exported; re-check Drive)
 - `shared/api_contract.md` — tool endpoints Tobi ↔ Otis
+- `docs/TEAM_HANDOFF.md` — what the bot does, and how to change it in Cursor or Claude
+- [NEPO bot handoff](https://docs.google.com/document/d/17YLnLekIi-4NvDZzLEvBV5DRbs4_WcV71G8LaDs5AUw/edit) — same note in the shared Drive folder, with the phone map
 - Drive folder: https://drive.google.com/drive/folders/1KoXnodnMgJ77r27w7-A_eiJQwqsbWnNg
 
 ## Demo bot

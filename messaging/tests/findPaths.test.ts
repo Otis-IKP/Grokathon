@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { buildSystemPrompt } from "../src/agent/systemPrompt";
 import { MockBackend } from "../src/backend/MockBackend";
 
 describe("findPaths", () => {
@@ -26,24 +27,46 @@ describe("findPaths", () => {
     expect(blob).not.toContain("555000");
   });
 
-  it("gives Maya one YPU path and no Whiffenpoofs path", async () => {
+  it("keeps the YPU friend path and also reaches Whiffenpoofs through Jordan", async () => {
     const ypu = await backend.findPaths("maya", "ypu");
-    expect(ypu).toHaveLength(1);
-    expect(ypu[0]?.hops).toBe(2);
-    expect(ypu[0]?.connector.name).toBe("Chris Park");
-    expect(ypu[0]?.target?.name).toBe("Taylor Brooks");
+    expect(ypu[0]?.connector.name).toBe("Jordan Hale");
+    expect(ypu[0]?.hops).toBe(1);
+    expect(ypu.some((path) => path.connector.name === "Chris Park" && path.target?.name === "Taylor Brooks")).toBe(true);
 
-    expect(await backend.findPaths("maya", "whiffs")).toEqual([]);
+    const whiffs = await backend.findPaths("maya", "whiffs");
+    expect(whiffs[0]?.connector.name).toBe("Jordan Hale");
+    expect(whiffs[0]?.hops).toBe(1);
   });
 
-  it("treats extra demo phones as Maya", async () => {
-    const aliased = new MockBackend({
-      DEMO_ALSO_PHONES: "+1 (202) 913-0363, +1 (203) 535-7481",
+  it("gives any phone the same warm graph", async () => {
+    const fromDc = await backend.getUserByPhone("+12029130363");
+    const fromRandom = await backend.getUserByPhone("+15559999999");
+    expect(fromDc?.id.startsWith("guest_")).toBe(true);
+    expect(fromDc?.phone).toBe("+12029130363");
+    expect(fromRandom?.phone).toBe("+15559999999");
+
+    const paths = await backend.findPaths(fromRandom?.id ?? "", "whiffs");
+    expect(paths[0]?.connector.name).toBe("Jordan Hale");
+  });
+
+  it("addresses Otis and Arden by name and still finds Jordan", async () => {
+    const backend = new MockBackend({
+      DEMO_MAYA_PHONE: "+18179360103",
+      DEMO_JORDAN_PHONE: "+12035854812",
+      DEMO_ALSO_PHONES: "+12035894150,+12035357481",
     });
-    const fromDc = await aliased.getUserByPhone("+12029130363");
-    const fromCt = await aliased.getUserByPhone("+12035357481");
-    expect(fromDc?.id).toBe("maya");
-    expect(fromCt?.id).toBe("maya");
-    expect(await aliased.getUserByPhone("+15559999999")).toBeNull();
+    const otis = await backend.getUserByPhone("+1 (203) 589-4150");
+    const arden = await backend.getUserByPhone("+12035357481");
+    const jesse = await backend.getUserByPhone("+12035854812");
+
+    expect(otis?.name).toBe("Otis");
+    expect(arden?.name).toBe("Arden");
+    expect(jesse?.name).toBe("Jordan Hale");
+    expect(buildSystemPrompt(otis!)).toContain("The student's name is Otis.");
+    expect(buildSystemPrompt(otis!)).not.toContain("Maya");
+    expect(buildSystemPrompt(arden!)).toContain("The student's name is Arden.");
+
+    const paths = await backend.findPaths(otis?.id ?? "", "ysig");
+    expect(paths[0]?.connector.name).toBe("Jordan Hale");
   });
 });

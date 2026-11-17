@@ -35,8 +35,11 @@ export class HttpBackend implements Backend {
     return this.send<PathResult[]>(`/paths?${query.toString()}`);
   }
 
-  createIntro(input: Omit<Intro, "id" | "status" | "createdAt">): Promise<Intro> {
-    return this.send<Intro>("/intros", { method: "POST", body: input });
+  async createIntro(input: Omit<Intro, "id" | "status" | "createdAt">): Promise<Intro> {
+    const { requesterPhone, ...body } = input;
+    const intro = await this.send<Intro>("/intros", { method: "POST", body });
+    if (requesterPhone) intro.requesterPhone = requesterPhone;
+    return intro;
   }
 
   updateIntroStatus(id: string, status: Intro["status"]): Promise<Intro> {

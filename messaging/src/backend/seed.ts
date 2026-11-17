@@ -5,7 +5,8 @@ import { normalizePhone } from "../util/phone";
 /**
  * Fictional demo graph. Every name and 555 number is made up for the hackathon.
  * Maya wants YSIG: Jordan is a 1-hop analyst, Priya is not a member and knows
- * board member Sam. YPU is one 2-hop only. Whiffenpoofs has no path.
+ * board member Sam. The mock backend also puts Jordan and Sam on every club
+ * so a demo from any phone still has a real connector to text.
  */
 
 export const DEMO_PHONES = {

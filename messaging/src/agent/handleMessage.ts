@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import { getConfig } from "../config";
 import { getBackend } from "../backend/Backend";
+import { MockBackend } from "../backend/MockBackend";
 import { phoneLast4, normalizePhone } from "../util/phone";
 import { sendText } from "../transport/sendblue";
 import { buildSystemPrompt } from "./systemPrompt";
@@ -68,15 +69,18 @@ export async function handleMessage(phone: string, text: string): Promise<string
 
 async function handleLocked(phone: string, text: string): Promise<string[]> {
   const backend = getBackend();
-  const user = await backend.getUserByPhone(phone);
+  const direct = await backend.getUserByPhone(phone);
+  if (direct) {
+    const connectorReply = await maybeHandleConnectorReply(direct.id, direct.name, text);
+    if (connectorReply) return connectorReply;
+  }
+
+  const user = backend instanceof MockBackend ? backend.ensureStudent(phone) : direct;
   if (!user) {
     return [
       `Hey! I'm NEPO. I help you get warm intros to Yale clubs through people you already know. Sign up here first: ${getConfig().SIGNUP_URL}`,
     ];
   }
-
-  const connectorReply = await maybeHandleConnectorReply(user.id, user.name, text);
-  if (connectorReply) return connectorReply;
 
   if (RESET_RE.test(text)) {
     clearSession(phone);
@@ -103,7 +107,7 @@ async function maybeHandleConnectorReply(userId: string, connectorName: string, 
   if (!intro) return null;
   const requester = await backend.getUser(intro.requesterId);
   const club = await backend.getClub(intro.clubId);
-  const requesterPhone = await backend.getUserPhone(intro.requesterId);
+  const requesterPhone = intro.requesterPhone ?? (await backend.getUserPhone(intro.requesterId));
   if (!requester || !club || !requesterPhone) return null;
   if (accepted) {
     await backend.updateIntroStatus(intro.id, "accepted");

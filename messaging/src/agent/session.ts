@@ -5,6 +5,8 @@ const HISTORY_CAP = 20;
 
 export interface Session {
   userId: string;
+  /** Handset this conversation is happening on. Alias phones share a user id but not this number. */
+  phone: string;
   history: ChatCompletionMessageParam[];
   pendingIntroId?: string;
   /** Turn number that saved the current draft. send_intro must happen on a later turn. */
@@ -28,6 +30,7 @@ export function getSession(phone: string, userId: string): Session {
   }
   const created: Session = {
     userId,
+    phone,
     history: [],
     turn: 0,
     lastActive: Date.now(),

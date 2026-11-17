@@ -159,6 +159,7 @@ async function runTool(name: ToolName, args: z.infer<(typeof schemas)[ToolName]>
     }
     const intro = await backend.createIntro({
       requesterId: session.userId,
+      requesterPhone: session.phone,
       connectorId: data.connectorId,
       clubId: data.clubId,
       message: data.message,
