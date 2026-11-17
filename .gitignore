@@ -48,3 +48,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+.DS_Store
+**/.venv/
+**/__pycache__/
+**/.env
+**/node_modules/
+**/.pytest_cache/
+**/.ruff_cache/
+*.pyc
