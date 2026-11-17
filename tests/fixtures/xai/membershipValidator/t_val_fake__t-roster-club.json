@@ -1,0 +1,19 @@
+{
+  "output": {
+    "verdict": "confirmed",
+    "confidence": 0.9,
+    "role_found": "Analyst",
+    "is_board": false,
+    "evidence": [
+      {
+        "url": "https://rosterclub.example/invented",
+        "quote": "made up",
+        "source_type": "club_site"
+      }
+    ],
+    "reasoning": "test"
+  },
+  "citations": [
+    "https://rosterclub.example/team"
+  ]
+}

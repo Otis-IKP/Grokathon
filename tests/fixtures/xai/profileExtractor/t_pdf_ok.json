@@ -1,0 +1,28 @@
+{
+  "output": {
+    "profile_name": "Pat D. Fine",
+    "affiliations": [
+      {
+        "org_name": "T Roster Club",
+        "role_title": "Member",
+        "kind": "yale_club",
+        "start_year": null,
+        "end_year": null,
+        "is_current": true,
+        "is_leadership": true,
+        "source_quote": "listed"
+      },
+      {
+        "org_name": "Acme Corp",
+        "role_title": "Intern",
+        "kind": "internship",
+        "start_year": 2026,
+        "end_year": 2026,
+        "is_current": false,
+        "is_leadership": false,
+        "source_quote": "Intern at Acme"
+      }
+    ]
+  },
+  "citations": []
+}

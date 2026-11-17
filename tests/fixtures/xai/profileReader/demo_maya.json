@@ -1,0 +1,42 @@
+{
+  "output": {
+    "readable": true,
+    "reason": null,
+    "identity_match": "yes",
+    "affiliations": [
+      {
+        "org_name": "Yale Daily News",
+        "role_title": "Staff Reporter",
+        "kind": "yale_club",
+        "start_year": 2025,
+        "end_year": null,
+        "is_current": true,
+        "is_leadership": false,
+        "source_quote": "Staff Reporter at Yale Daily News"
+      },
+      {
+        "org_name": "TEDxYale",
+        "role_title": "Speaker Team",
+        "kind": "yale_club",
+        "start_year": 2025,
+        "end_year": null,
+        "is_current": true,
+        "is_leadership": false,
+        "source_quote": "Speaker Team at TEDxYale"
+      },
+      {
+        "org_name": "Elm City Capital",
+        "role_title": "Summer Analyst",
+        "kind": "internship",
+        "start_year": 2026,
+        "end_year": 2027,
+        "is_current": false,
+        "is_leadership": false,
+        "source_quote": "Summer Analyst at Elm City Capital"
+      }
+    ]
+  },
+  "citations": [
+    "https://www.linkedin.com/in/demo-maya-chen"
+  ]
+}
