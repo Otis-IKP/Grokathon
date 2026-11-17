@@ -1,0 +1,28 @@
+{
+  "output": {
+    "profile_name": "Sample Student",
+    "affiliations": [
+      {
+        "org_name": "Yale Political Union",
+        "role_title": "Member",
+        "kind": "yale_club",
+        "start_year": 2025,
+        "end_year": null,
+        "is_current": true,
+        "is_leadership": false,
+        "source_quote": "Member at Yale Political Union"
+      },
+      {
+        "org_name": "Dwight Hall",
+        "role_title": "Volunteer",
+        "kind": "yale_club",
+        "start_year": 2025,
+        "end_year": null,
+        "is_current": true,
+        "is_leadership": false,
+        "source_quote": "Volunteer at Dwight Hall"
+      }
+    ]
+  },
+  "citations": []
+}

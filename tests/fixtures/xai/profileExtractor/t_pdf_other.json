@@ -1,0 +1,18 @@
+{
+  "output": {
+    "profile_name": "Someone Else",
+    "affiliations": [
+      {
+        "org_name": "T Roster Club",
+        "role_title": "Member",
+        "kind": "yale_club",
+        "start_year": null,
+        "end_year": null,
+        "is_current": true,
+        "is_leadership": false,
+        "source_quote": "listed"
+      }
+    ]
+  },
+  "citations": []
+}

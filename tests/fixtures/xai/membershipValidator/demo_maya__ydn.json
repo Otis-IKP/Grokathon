@@ -1,0 +1,19 @@
+{
+  "output": {
+    "verdict": "confirmed",
+    "confidence": 0.95,
+    "role_found": "Staff Reporter",
+    "is_board": false,
+    "evidence": [
+      {
+        "url": "https://yaledailynews.com/blog/author/demo-maya-chen/",
+        "quote": "Maya Chen is a staff reporter covering student life.",
+        "source_type": "campus_news"
+      }
+    ],
+    "reasoning": "The Yale Daily News author page lists Maya Chen as a staff reporter. The class year on the page matches."
+  },
+  "citations": [
+    "https://yaledailynews.com/blog/author/demo-maya-chen/"
+  ]
+}

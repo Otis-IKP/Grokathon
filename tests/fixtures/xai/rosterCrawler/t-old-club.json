@@ -1,0 +1,21 @@
+{
+  "output": {
+    "roster_url": "https://oldclub.example/board",
+    "as_of": "2023-2024",
+    "website": null,
+    "members": [
+      {
+        "full_name": "Alice Roster",
+        "role_title": "Chair",
+        "is_board": true,
+        "class_year": null,
+        "college": null,
+        "quote": "Alice Roster, Chair"
+      }
+    ],
+    "notes": "Only an old board list exists."
+  },
+  "citations": [
+    "https://oldclub.example/board"
+  ]
+}
