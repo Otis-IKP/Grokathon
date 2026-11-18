@@ -1,10 +1,9 @@
 import { describe, expect, test } from "vitest";
 import { fullNameMatchesPerson, pickRosterMatch, type RosterCandidate } from "@/lib/names";
 import { maskPhone, normalizePhone } from "@/lib/phone";
-import { rateLimit, resetRateLimits } from "@/lib/rateLimit";
 import { casLoginUrl, casServiceUrl, parseCasResponse, safeNext } from "@/server/auth/cas";
 import { normalizeClubName } from "@/server/clubs/aliases";
-import { classifySource, filterCited, isCited } from "@/server/xai/evidence";
+import { classifySource, filterCited, isCited } from "@/server/claude/evidence";
 import { yaliesPeople } from "@/server/yalies/client";
 import { rosterIsOld } from "@/server/jobs/handlers";
 
@@ -69,15 +68,6 @@ describe("phone", () => {
     expect(normalizePhone("+1 203 555 0101")).toBe("+12035550101");
     expect(maskPhone("+12035550101")).toBe("••• ••• 0101");
     expect(() => normalizePhone("12")).toThrowError(/not valid/);
-  });
-});
-
-describe("rate limit", () => {
-  test("allows `limit` hits per window, then throws rate_limited", () => {
-    resetRateLimits();
-    for (let i = 0; i < 3; i++) rateLimit("k", 3, 1000, 1000 + i);
-    expect(() => rateLimit("k", 3, 1000, 1500)).toThrowError(/Too many/);
-    expect(() => rateLimit("k", 3, 1000, 2100)).not.toThrow();
   });
 });
 

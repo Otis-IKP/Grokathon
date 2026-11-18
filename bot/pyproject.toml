@@ -1,16 +1,16 @@
 [project]
 name = "nepo-bot"
 version = "0.1.0"
-description = "Yale NEPO — Grok iMessage bot for warm club intros (Grokathon 2026)"
+description = "Yale NEPO — Claude iMessage bot for warm club intros (Grokathon 2026)"
 readme = "README.md"
 authors = [
     { name = "Tobi Bamisaye", email = "tobi.bamisaye@yale.edu" }
 ]
 requires-python = ">=3.11"
 dependencies = [
+    "anthropic>=2.10.0",
     "fastapi>=0.163.2",
     "httpx>=0.28.1",
-    "openai>=3.53.0",
     "pydantic>=2.14.3",
     "pydantic-settings>=2.16.3",
     "python-dotenv>=1.2.4",

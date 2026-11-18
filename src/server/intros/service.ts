@@ -94,12 +94,50 @@ async function toViews(db: Db, rows: Intro[], viewerNetid: string): Promise<Intr
   });
 }
 
+function friendshipBetween(a: string, b: string) {
+  return or(
+    and(eq(friendships.requesterNetid, a), eq(friendships.addresseeNetid, b)),
+    and(eq(friendships.requesterNetid, b), eq(friendships.addresseeNetid, a)),
+  );
+}
+
+/**
+ * A saved search is a snapshot. Before an intro is drafted, created, sent or
+ * its phone released, the connector's choices are checked again as they stand
+ * now: still listed, still willing to be a connector, and still tied to the
+ * requester (a confirmed friendship, or the requester's own pending add).
+ */
+async function connectorStillAvailable(db: Db, requesterNetid: string, connectorNetid: string): Promise<boolean> {
+  const [person] = await db
+    .select({ visibility: people.visibility })
+    .from(people)
+    .where(eq(people.netid, connectorNetid));
+  if (!person || person.visibility !== "listed") return false;
+  const [user] = await db
+    .select({ allow: users.allowAsConnector })
+    .from(users)
+    .where(eq(users.netid, connectorNetid));
+  if (user && !user.allow) return false;
+  const ties = await db
+    .select({ status: friendships.status, requester: friendships.requesterNetid })
+    .from(friendships)
+    .where(friendshipBetween(requesterNetid, connectorNetid));
+  return ties.some((t) => t.status === "accepted" || (t.status === "pending" && t.requester === requesterNetid));
+}
+
+async function assertConnectorAvailable(db: Db, requesterNetid: string, connectorNetid: string): Promise<void> {
+  if (!(await connectorStillAvailable(db, requesterNetid, connectorNetid))) {
+    throw new AppError("connector_not_in_search", "That person can't be asked right now. Search again for a current path.");
+  }
+}
+
 /** Draft the text a requester would send a connector. Fast enough to run inline. */
 export async function draftIntro(
   db: Db,
   input: { requesterNetid: string; searchId: string; connectorNetid: string; tone?: IntroTone; note?: string },
 ): Promise<{ message: string }> {
   const { club, result } = await getSearchResultFor(db, input.requesterNetid, input.searchId, input.connectorNetid);
+  await assertConnectorAvailable(db, input.requesterNetid, result.connector.netid);
   const [requester] = await db.select().from(people).where(eq(people.netid, input.requesterNetid));
   const first = requester.preferredName?.trim() || requester.firstName;
   const link =
@@ -144,6 +182,35 @@ export async function createIntro(
   const target = result.target?.person.netid ?? null;
   if (input.targetNetid && input.targetNetid.toLowerCase() !== target) {
     throw new AppError("invalid_request", "target_netid does not match this path.");
+  }
+  await assertConnectorAvailable(db, input.requesterNetid, result.connector.netid);
+
+  // One open ask per requester, connector and club. An unanswered one blocks
+  // a repeat; an older draft is replaced by this one.
+  const samePair = and(
+    eq(intros.requesterNetid, input.requesterNetid),
+    eq(intros.connectorNetid, result.connector.netid),
+    eq(intros.clubId, club.id),
+  );
+  const open = await db
+    .select({ id: intros.id, status: intros.status })
+    .from(intros)
+    .where(and(samePair, inArray(intros.status, ["drafted", "sent"])));
+  const waiting = open.find((i) => i.status === "sent");
+  if (waiting) {
+    throw new AppError(
+      "invalid_state",
+      `You already asked ${result.connector.first_name} about this club. Wait for their answer, or cancel that request first.`,
+      { intro_id: waiting.id },
+    );
+  }
+  for (const draft of open) {
+    const [gone] = await db
+      .update(intros)
+      .set({ status: "cancelled" })
+      .where(and(eq(intros.id, draft.id), eq(intros.status, "drafted")))
+      .returning({ id: intros.id });
+    if (gone) await addEvent(db, gone.id, "cancelled", input.requesterNetid, { superseded: true });
   }
   const [row] = await db
     .insert(intros)
@@ -214,7 +281,12 @@ async function requesterIntro(db: Db, id: string, netid: string): Promise<Intro>
 export async function editIntroMessage(db: Db, id: string, netid: string, message: string): Promise<IntroView> {
   const row = await requesterIntro(db, id, netid);
   if (row.status !== "drafted") throw new AppError("invalid_state", "Only a draft can be edited.");
-  const [updated] = await db.update(intros).set({ message: message.trim() }).where(eq(intros.id, id)).returning();
+  const [updated] = await db
+    .update(intros)
+    .set({ message: message.trim() })
+    .where(and(eq(intros.id, id), eq(intros.status, "drafted")))
+    .returning();
+  if (!updated) throw new AppError("invalid_state", "Only a draft can be edited.");
   await addEvent(db, id, "edited", netid);
   return (await toViews(db, [updated], netid))[0];
 }
@@ -228,21 +300,37 @@ export async function introAction(
   const row = await requesterIntro(db, id, netid);
   let patch: Partial<typeof intros.$inferInsert>;
   let event: string;
+  let from: string[];
+  let refusal: string;
   if (action === "mark_sent") {
     if (row.status === "sent") return (await toViews(db, [row], netid))[0];
-    if (row.status !== "drafted") throw new AppError("invalid_state", "This intro was already sent.");
+    refusal = "This intro was already sent.";
+    if (row.status !== "drafted") throw new AppError("invalid_state", refusal);
+    // The connector may have opted out since the search was run.
+    await assertConnectorAvailable(db, row.requesterNetid, row.connectorNetid);
     patch = { status: "sent", sentAt: new Date() };
     event = "sent";
+    from = ["drafted"];
   } else if (action === "cancel") {
-    if (!["drafted", "sent"].includes(row.status)) throw new AppError("invalid_state", "This intro can't be cancelled now.");
+    refusal = "This intro can't be cancelled now.";
     patch = { status: "cancelled" };
     event = "cancelled";
+    from = ["drafted", "sent"];
   } else {
-    if (row.status !== "accepted") throw new AppError("invalid_state", "Only an accepted intro can be marked done.");
+    refusal = "Only an accepted intro can be marked done.";
     patch = { status: "completed" };
     event = "completed";
+    from = ["accepted"];
   }
-  const [updated] = await db.update(intros).set(patch).where(eq(intros.id, id)).returning();
+  if (!from.includes(row.status)) throw new AppError("invalid_state", refusal);
+  // The status guard makes the transition atomic: if the connector answered
+  // (or another tab acted) in the meantime, no row matches and nothing changes.
+  const [updated] = await db
+    .update(intros)
+    .set(patch)
+    .where(and(eq(intros.id, id), inArray(intros.status, from)))
+    .returning();
+  if (!updated) throw new AppError("invalid_state", refusal);
   await addEvent(db, id, event, netid);
   return (await toViews(db, [updated], netid))[0];
 }
@@ -298,8 +386,10 @@ export async function respondToIntro(
       sentAt: row.sentAt ?? new Date(),
       connectorNote: note?.trim() ? note.trim().slice(0, 500) : null,
     })
-    .where(eq(intros.id, id))
+    // Guarded so a cancel that lands first wins, and a double tap answers once.
+    .where(and(eq(intros.id, id), inArray(intros.status, ["sent", "drafted"])))
     .returning();
+  if (!updated) throw new AppError("invalid_state", "This request has already been answered.");
   await addEvent(db, id, status, netid);
 
   const [requesterUser] = await db.select().from(users).where(eq(users.netid, row.requesterNetid));
@@ -352,18 +442,12 @@ export async function getIntroForRequester(db: Db, id: string, requesterNetid: s
 export async function connectorPhoneForRequester(db: Db, id: string, requesterNetid: string): Promise<string | null> {
   const row = await requesterIntro(db, id, requesterNetid);
   if (!["drafted", "sent"].includes(row.status)) return null;
+  // Hidden, or no longer willing to be a connector: never texted, whatever an old search said.
+  if (!(await connectorStillAvailable(db, row.requesterNetid, row.connectorNetid))) return null;
   const [friendship] = await db
     .select({ id: friendships.id })
     .from(friendships)
-    .where(
-      and(
-        eq(friendships.status, "accepted"),
-        or(
-          and(eq(friendships.requesterNetid, row.requesterNetid), eq(friendships.addresseeNetid, row.connectorNetid)),
-          and(eq(friendships.requesterNetid, row.connectorNetid), eq(friendships.addresseeNetid, row.requesterNetid)),
-        ),
-      ),
-    );
+    .where(and(eq(friendships.status, "accepted"), friendshipBetween(row.requesterNetid, row.connectorNetid)));
   if (!friendship) return null;
   const [connector] = await db.select().from(users).where(eq(users.netid, row.connectorNetid));
   return connector?.phoneE164 && connector.phoneVerifiedAt ? connector.phoneE164 : null;

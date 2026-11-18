@@ -1,23 +1,11 @@
 import { AppError } from "@/lib/errors";
 import { botRoute } from "@/server/api/route";
-import { getIntroForRequester } from "@/server/intros/service";
-import { userForPhone } from "@/server/me/phone";
 
-/** `GET /api/bot/intros/{id}?phone=`: one of the requester's intros, for the bot's draft link and send step. */
-export const GET = botRoute(async ({ db, url, params }) => {
-  const phone = url.searchParams.get("phone");
-  if (!phone) throw new AppError("invalid_request", "phone is required.");
-  const user = await userForPhone(db, phone);
-  const intro = await getIntroForRequester(db, params.id, user.netid);
-  return {
-    intro: {
-      intro_id: intro.id,
-      status: intro.status,
-      message: intro.message,
-      club: intro.club,
-      connector: intro.connector,
-      created_at: intro.created_at,
-      response_url: intro.response_url,
-    },
-  };
+/**
+ * Reading an intro moved to `POST /api/bot/intros/{id}/read`, which takes the
+ * phone in the body. A phone in a query string ends up in access logs
+ * (privacy rule 11), so the old form is refused rather than served.
+ */
+export const GET = botRoute(async () => {
+  throw new AppError("invalid_request", "Use POST /api/bot/intros/{id}/read with the phone in the body.");
 });

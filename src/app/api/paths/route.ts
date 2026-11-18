@@ -14,7 +14,7 @@ const body = z
   .refine((v) => v.club_id || v.club_text, { message: "club_id or club_text is required" });
 
 export const POST = appRoute(async ({ req, db, me }) => {
-  rateLimit(`paths:${me.user.id}`, 30, 60_000);
+  await rateLimit(db, `paths:${me.user.id}`, 30, 60_000);
   const input = await parseBody(req, body);
   let clubId = input.club_id;
   if (!clubId) {

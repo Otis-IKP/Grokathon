@@ -11,5 +11,5 @@ async function logout() {
   return Response.redirect(viaCas ? casLogoutUrl() : `${env().APP_URL}/login`, 303);
 }
 
+// POST only: a GET would let any page sign the visitor out with an image tag.
 export const POST = publicRoute(logout);
-export const GET = publicRoute(logout);

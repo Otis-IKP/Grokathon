@@ -1,14 +1,16 @@
-import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
 import { requireEnv } from "@/server/env";
 
-let client: OpenAI | undefined;
+let client: Anthropic | undefined;
 
-/** xAI speaks the OpenAI Responses API at api.x.ai. */
-export function xai(): OpenAI {
-  client ??= new OpenAI({
-    apiKey: requireEnv("XAI_API_KEY"),
-    baseURL: "https://api.x.ai/v1",
-    timeout: 180_000,
+/** How long one agent request may run. Web research can take a few minutes. */
+export const AGENT_REQUEST_TIMEOUT_MS = 240_000;
+
+/** The Anthropic client for the research agents. */
+export function claude(): Anthropic {
+  client ??= new Anthropic({
+    apiKey: requireEnv("ANTHROPIC_API_KEY"),
+    timeout: AGENT_REQUEST_TIMEOUT_MS,
     maxRetries: 1,
   });
   return client;

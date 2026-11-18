@@ -56,6 +56,22 @@ export function errorBody(code: ErrorCode, message: string, details?: unknown) {
   return { error: { code, message, ...(details !== undefined ? { issues: details } : {}) } };
 }
 
+/**
+ * What goes in the server log for an unexpected error. A failed database query
+ * carries its SQL and bound parameters (phones, tokens, uploaded text) in both
+ * its message and its stack, so for those only the driver's own reason is kept.
+ */
+export function describeForLog(err: unknown): string {
+  if (!(err instanceof Error)) return String(err);
+  const isQueryError = "query" in err || "params" in err || err.message.startsWith("Failed query");
+  if (isQueryError) {
+    const cause = (err as { cause?: unknown }).cause;
+    const reason = cause instanceof Error ? cause.message : "no cause given";
+    return `database query failed: ${reason.slice(0, 300)}`;
+  }
+  return err.stack ?? err.message;
+}
+
 export function errorResponse(err: unknown, headers?: HeadersInit): Response {
   if (err instanceof AppError) {
     return Response.json(errorBody(err.code, err.message, err.details), {
@@ -70,6 +86,6 @@ export function errorResponse(err: unknown, headers?: HeadersInit): Response {
     });
   }
   // Never leak internals. The message is logged without request bodies (privacy rule 11).
-  console.error("[nepo] unhandled error:", err instanceof Error ? err.stack ?? err.message : String(err));
+  console.error("[nepo] unhandled error:", describeForLog(err));
   return Response.json(errorBody("internal_error", "Something went wrong."), { status: 500, headers });
 }

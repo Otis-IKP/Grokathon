@@ -11,7 +11,7 @@ const body = z.object({
 });
 
 export const POST = appRoute(async ({ req, db, me }) => {
-  rateLimit(`draft:${me.user.id}`, 20, 60_000);
+  await rateLimit(db, `draft:${me.user.id}`, 20, 60_000);
   const input = await parseBody(req, body);
   return draftIntro(db, {
     requesterNetid: me.person.netid,

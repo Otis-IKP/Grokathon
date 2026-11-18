@@ -1,9 +1,9 @@
 import { z } from "zod";
 
 /**
- * The Bot API contract with Tobi's Grok agent (section 9.3). Request schemas
+ * The Bot API contract with the Claude bot in messaging/ (section 9.3). Request schemas
  * are defined once here: the route handlers validate with them, and
- * `pnpm gen:bot-tools` turns them into xAI function definitions in
+ * `pnpm gen:bot-tools` turns them into Claude tool definitions in
  * docs/bot-tools.json. Keep the Bot API stable: add fields, never rename.
  */
 
@@ -146,8 +146,8 @@ export const botTools: BotTool[] = [
   },
   {
     name: "list_intros",
-    method: "GET",
-    path: "/api/bot/intros",
+    method: "POST",
+    path: "/api/bot/intros/list",
     description:
       "List the user's recent intros and their status. Call this when the user asks whether someone replied or what happened to an intro. A status of declined should be relayed gently as \"not right now\", with no reason.",
     returns: "{ intros: [{ intro_id, status, status_label, club, connector, target, message, created_at, sent_at, responded_at }] }",
@@ -164,11 +164,11 @@ export const botTools: BotTool[] = [
   },
 ];
 
-/** xAI function definitions: flat objects with type, name, description, parameters. */
+/** Claude tool definitions: name, description, input_schema. */
 export function botToolDefinitions() {
   return botTools.map((tool) => {
-    const parameters = z.toJSONSchema(botSchemas[tool.name]) as Record<string, unknown>;
-    delete parameters.$schema;
-    return { type: "function" as const, name: tool.name, description: tool.description, parameters };
+    const input_schema = z.toJSONSchema(botSchemas[tool.name]) as Record<string, unknown>;
+    delete input_schema.$schema;
+    return { name: tool.name, description: tool.description, input_schema };
   });
 }

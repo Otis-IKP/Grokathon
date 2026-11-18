@@ -36,7 +36,8 @@ function roleWord(role: Role, title: string | null): string {
 
 export function evidenceSuffix(status: VisibleStatus, evidenceSource: string | null): string {
   if (status === "verified") {
-    if (!evidenceSource || evidenceSource === "club_site") return " (confirmed on the club's site)";
+    if (!evidenceSource) return " (confirmed)";
+    if (evidenceSource === "club_site") return " (confirmed on the club's site)";
     const names: Record<string, string> = {
       yale_connect: "Yale Connect",
       campus_news: "campus news",

@@ -3,10 +3,15 @@ import { env } from "@/server/env";
 
 const CAS_BASE = "https://secure.its.yale.edu/cas";
 
-/** Only same-origin relative paths: must start with `/` and not `//` or `/\`. */
+/**
+ * Only same-origin relative paths: must start with `/` and not `//` or `/\`.
+ * Control characters and backslashes are refused anywhere, because browsers
+ * drop tabs and newlines from URLs and read `\` as `/`, which would turn
+ * `/<tab>/evil.com` into `//evil.com`.
+ */
 export function safeNext(next: string | null | undefined): string {
-  if (!next || !next.startsWith("/") || next.startsWith("//") || next.startsWith("/\\")) return "/";
-  if (/[\r\n]/.test(next)) return "/";
+  if (!next || !next.startsWith("/") || next.startsWith("//")) return "/";
+  if (/[\u0000-\u001f\u007f\\]/.test(next)) return "/";
   return next;
 }
 

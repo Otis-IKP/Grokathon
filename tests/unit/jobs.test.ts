@@ -13,7 +13,7 @@ import {
   users,
   type Club,
 } from "@/server/db/schema";
-import { claimNext, enqueue, failJob, requeueStuck } from "@/server/jobs/queue";
+import { claimNext, enqueue, failJob, recoverStuck, requeueStuck } from "@/server/jobs/queue";
 import { drainJobs } from "@/server/jobs/run";
 import { confirmLinkedin, linkedinStatus, submitLinkedinPdfText, submitLinkedinUrl } from "@/server/linkedin/service";
 import { sha256 } from "@/server/privacy/redact";
@@ -89,14 +89,41 @@ describe("queue (section 10)", () => {
     await db.delete(jobs);
   });
 
-  test("jobs stuck in running for more than 5 minutes are re-queued", async () => {
-    const { job } = await enqueue(db, "research_person", { netid: "x4" });
-    await db
-      .update(jobs)
-      .set({ status: "running", lockedAt: new Date(Date.now() - 6 * 60_000) })
-      .where(eq(jobs.id, job!.id));
-    expect(await requeueStuck(db)).toBe(1);
-    await db.delete(jobs);
+  test("a job stuck in running is re-queued only after 20 minutes, and failed once its attempts are used up", async () => {
+    try {
+      const { job } = await enqueue(db, "research_person", { netid: "x4" });
+      // Six minutes in, a slow agent run is still alive: it must not be handed to a second runner.
+      await db
+        .update(jobs)
+        .set({ status: "running", attempts: 1, lockedAt: new Date(Date.now() - 6 * 60_000) })
+        .where(eq(jobs.id, job!.id));
+      expect(await requeueStuck(db)).toBe(0);
+      await db.update(jobs).set({ lockedAt: new Date(Date.now() - 21 * 60_000) }).where(eq(jobs.id, job!.id));
+      expect(await requeueStuck(db)).toBe(1);
+      // The runner died on the last allowed attempt: the job fails instead of looping forever.
+      await db
+        .update(jobs)
+        .set({ status: "running", attempts: 3, lockedAt: new Date(Date.now() - 21 * 60_000) })
+        .where(eq(jobs.id, job!.id));
+      const recovered = await recoverStuck(db);
+      expect([recovered.requeued, recovered.failed.map((j) => j.id)]).toEqual([0, [job!.id]]);
+      const [row] = await db.select().from(jobs).where(eq(jobs.id, job!.id));
+      expect(row.status).toBe("failed");
+    } finally {
+      await db.delete(jobs);
+    }
+  });
+
+  test("a failed crawl can be queued again after an hour, not after the full TTL", async () => {
+    try {
+      const { job } = await enqueue(db, "crawl_roster", { club_id: "00000000-0000-0000-0000-000000000001" });
+      await db.update(jobs).set({ status: "failed", finishedAt: new Date(Date.now() - 2 * 60 * 60_000) }).where(eq(jobs.id, job!.id));
+      expect((await enqueue(db, "crawl_roster", { club_id: "00000000-0000-0000-0000-000000000001" })).enqueued).toBe(true);
+      await db.update(jobs).set({ status: "done", finishedAt: new Date(Date.now() - 2 * 60 * 60_000) }).where(eq(jobs.id, job!.id));
+      expect((await enqueue(db, "crawl_roster", { club_id: "00000000-0000-0000-0000-000000000001" })).enqueued).toBe(false);
+    } finally {
+      await db.delete(jobs);
+    }
   });
 
   test("the hourly budget stops claiming", async () => {

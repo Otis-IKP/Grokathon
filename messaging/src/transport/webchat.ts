@@ -4,6 +4,7 @@ import type { Express } from "express";
 import { z } from "zod";
 import { getConfig } from "../config";
 import { handleMessage } from "../agent/handleMessage";
+import { sameSecret } from "../util/secret";
 
 const publicDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../public");
 
@@ -24,7 +25,7 @@ export function mountWebchat(app: Express): void {
 
   app.post("/chat", async (req, res) => {
     const secret = typeof req.query.secret === "string" ? req.query.secret : "";
-    if (secret !== getConfig().WEBHOOK_SECRET) {
+    if (!sameSecret(secret, getConfig().WEBHOOK_SECRET)) {
       res.status(401).json({ error: "bad secret" });
       return;
     }

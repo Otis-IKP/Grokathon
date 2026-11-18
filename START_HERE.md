@@ -1,24 +1,24 @@
 # START HERE (Tobi)
 
-Hackathon is **tonight** at Tsai CITY, 5–9 PM. Your lane is the **Grok iMessage bot** in `messaging/`. `bot/` is the older scaffold. The presenting notes are in `messaging/README.md`.
+Hackathon is **tonight** at Tsai CITY, 5–9 PM. Your lane is the **Claude iMessage bot** in `messaging/`. `bot/` is the older scaffold. The presenting notes are in `messaging/README.md`.
 
 ## Already done for you
 
 - Accepted Otis GitHub invite → cloned `Otis-IKP/Grokathon` into this folder
 - Pulled plan docs from Drive into `docs/`
 - Built `bot/` with:
-  - Grok-only agent + tool calling
+  - Claude agent + tool calling (ported from Grok)
   - Stub Maya/YSIG graph (demo works offline)
   - FastAPI `/chat` + `/webhooks/{provider}`
   - Local REPL
-  - `.env.example` for xAI + Sendblue/Linq/LoopMessage/Twilio
+  - `.env.example` for Anthropic + Sendblue/Linq/LoopMessage/Twilio
 - Shared API contract in `shared/api_contract.md`
 
 ## You do next (in this folder)
 
 ```bash
 cd "/Users/tobibamisaye/Uni stuff/Hackathons/grokathon/bot"
-# 1) put XAI_API_KEY in .env
+# 1) put ANTHROPIC_API_KEY in .env
 # 2) paste your FULL prompt into:
 #    src/nepo_bot/prompts/system.md
 # 3) run:
@@ -29,8 +29,7 @@ Then open a new Cursor chat **in `Hackathons/grokathon/bot`** and paste your ful
 
 ## Event constraints
 
-- Projects must use **Grok models** for prize eligibility
-- Every attendee gets X Premium (Grok / Grok Bot / Cursor)
+- The event asked for **Grok models** for prize eligibility; NEPO now runs on **Claude** (Anthropic API) everywhere
 - 4-hour speed hack; submit by 8 PM
 
 ## Open questions still in the plan

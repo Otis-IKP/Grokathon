@@ -15,6 +15,10 @@ export interface Session {
   pendingIntroId?: string;
   /** Turn number that saved the current draft. send_intro must happen on a later turn. */
   pendingIntroTurn?: number;
+  /** When the current draft was saved. A draft can be confirmed for 30 minutes. */
+  pendingIntroAt?: number;
+  /** Intros whose text has gone out from this session. They are never texted again. */
+  sentIntroIds: string[];
   /** How many user messages this session has handled. Starts at 0. */
   turn: number;
   lastActive: number;
@@ -43,18 +47,44 @@ export function getSession(phone: string, userId: string, userName = "the studen
     turn: 0,
     lastActive: Date.now(),
     allowedConnectorIds: [],
+    sentIntroIds: [],
     latestUserText: "",
   };
   sessions.set(phone, created);
   return created;
 }
 
+/** This phone's session as stored state, or undefined if there is none or it has idled out. */
+export function exportSession(phone: string, now = Date.now()): Session | undefined {
+  const session = sessions.get(phone);
+  if (!session || now - session.lastActive > IDLE_MS) return undefined;
+  return session;
+}
+
+/** Replace this phone's session with stored state (or drop it). An idled-out session is not restored. */
+export function importSession(phone: string, session: Session | undefined, now = Date.now()): void {
+  if (!session || typeof session !== "object" || !Array.isArray(session.history) || now - session.lastActive > IDLE_MS) {
+    sessions.delete(phone);
+    return;
+  }
+  sessions.set(phone, {
+    ...session,
+    phone,
+    sentIntroIds: session.sentIntroIds ?? [],
+    allowedConnectorIds: session.allowedConnectorIds ?? [],
+  });
+}
+
+/** Forget the draft waiting for a "send". */
+export function clearPendingIntro(session: Session): void {
+  session.pendingIntroId = undefined;
+  session.pendingIntroTurn = undefined;
+  session.pendingIntroAt = undefined;
+}
+
 export function clearSession(phone: string): void {
   const session = sessions.get(phone);
-  if (session) {
-    session.pendingIntroId = undefined;
-    session.pendingIntroTurn = undefined;
-  }
+  if (session) clearPendingIntro(session);
   sessions.delete(phone);
 }
 

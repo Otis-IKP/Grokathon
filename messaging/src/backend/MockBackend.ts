@@ -21,13 +21,27 @@ import { normalizePhone } from "../util/phone";
 
 const CONFIDENCE_RANK = { exact: 0, alias: 1, fuzzy: 2 } as const;
 
-/** Real teammates. These phones use Maya's friends, but the bot addresses them by name. */
-const DEMO_STUDENT_NAMES: Record<string, string> = {
-  "+15550009105": "Tobi",
-  "+15550009104": "Otis",
-  "+15550009102": "Arden",
-  "+15550009103": "Jesse",
+/**
+ * Phones the bot addresses by a first name while they use Maya's friends.
+ * These defaults are fictional. Real teammates go in the DEMO_STUDENT_NAMES
+ * env var ("+15550000101=Tobi,+15550000102=Otis"), never in this file.
+ */
+const DEFAULT_STUDENT_NAMES: Record<string, string> = {
+  "+15550000101": "Tobi",
+  "+15550000102": "Otis",
+  "+15550000103": "Arden",
+  "+15550000104": "Jesse",
 };
+
+function studentNamesFrom(raw: string | undefined): Record<string, string> {
+  const names: Record<string, string> = { ...DEFAULT_STUDENT_NAMES };
+  for (const pair of (raw ?? "").split(",")) {
+    const [phone, name] = pair.split("=").map((part) => part.trim());
+    if (!phone || !name) continue;
+    names[normalizePhone(phone)] = name.slice(0, 40);
+  }
+  return names;
+}
 
 export class MockBackend implements Backend {
   private readonly users: User[];
@@ -39,9 +53,11 @@ export class MockBackend implements Backend {
   /** Phones that play Maya. They share her user id, so the intro remembers which handset asked. */
   private readonly mayaAliasPhones: Set<string>;
   private readonly studentsByPhone = new Map<string, User>();
+  private readonly studentNames: Record<string, string>;
 
   constructor(env: NodeJS.ProcessEnv = {}) {
     const seed = buildSeed(env);
+    this.studentNames = studentNamesFrom(env.DEMO_STUDENT_NAMES);
     this.users = seed.users;
     this.clubs = seed.clubs;
     this.memberships = seed.memberships;
@@ -60,7 +76,7 @@ export class MockBackend implements Backend {
   async getUserByPhone(phone: string): Promise<User | null> {
     const normalized = normalizePhone(phone);
     const direct = this.users.find((user) => user.phone === normalized);
-    const named = DEMO_STUDENT_NAMES[normalized];
+    const named = this.studentNames[normalized];
     if (direct && !(named && direct.id === "maya")) return direct;
     if (named) return this.ensureStudent(normalized);
     if (direct) return direct;
@@ -80,7 +96,7 @@ export class MockBackend implements Backend {
     const cached = this.studentsByPhone.get(normalized);
     if (cached) return cached;
 
-    const knownName = DEMO_STUDENT_NAMES[normalized];
+    const knownName = this.studentNames[normalized];
     if (knownName) return this.studentWithMayaFriends(normalized, knownName);
 
     const direct = this.users.find((user) => user.phone === normalized);

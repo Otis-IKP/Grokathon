@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { AppError } from "@/lib/errors";
 import type { Affiliation } from "@/server/agents/shared";
 import { createUnreviewedClub } from "@/server/clubs/service";
@@ -36,7 +36,11 @@ export { setStatus as setLinkedinStatus };
 export async function submitLinkedinUrl(db: Db, user: User, rawUrl: string) {
   const url = cleanLinkedinUrl(rawUrl);
   await db.update(people).set({ linkedinUrl: url, linkedinUrlSource: "self" }).where(eq(people.netid, user.netid));
-  const { job } = await enqueue(db, "linkedin_read", { user_id: user.id, url }, { force: true });
+  const { job, enqueued } = await enqueue(db, "linkedin_read", { user_id: user.id, url }, { force: true });
+  // A read that is still waiting keeps its place but reads the URL just submitted, not the old one.
+  if (!enqueued && job?.status === "queued") {
+    await db.update(jobs).set({ payload: { user_id: user.id, url } }).where(and(eq(jobs.id, job.id), eq(jobs.status, "queued")));
+  }
   await setStatus(db, user.id, "reading", job?.id ?? null);
   return { status: "reading" as const };
 }

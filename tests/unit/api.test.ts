@@ -41,6 +41,8 @@ vi.mock("@/server/auth/session", () => ({
 import * as botClub from "@/app/api/bot/club/route";
 import * as botConnectorPhone from "@/app/api/bot/intros/[id]/connector-phone/route";
 import * as botIntro from "@/app/api/bot/intros/[id]/route";
+import * as botIntroRead from "@/app/api/bot/intros/[id]/read/route";
+import * as botIntrosList from "@/app/api/bot/intros/list/route";
 import * as botRespond from "@/app/api/bot/intros/[id]/respond/route";
 import * as botDraft from "@/app/api/bot/draft-intro/route";
 import * as botFindPaths from "@/app/api/bot/find-paths/route";
@@ -98,8 +100,8 @@ beforeAll(async () => {
   await seed(db);
 });
 afterAll(() => close());
-beforeEach(() => {
-  resetRateLimits();
+beforeEach(async () => {
+  await resetRateLimits(db);
   session.current = {};
 });
 
@@ -245,7 +247,10 @@ describe("the bot conversation (section 9.3)", () => {
     expect(accepted.body.intro.status).toBe("accepted");
     session.current = {};
 
-    const list = await call(botIntros.GET as Handler, { url: "http://localhost:3000/api/bot/intros?phone=%2B12035550101", headers: BOT });
+    const list = await bot(botIntrosList.POST as Handler, { phone: "+12035550101" });
+    // The old form put the phone in the URL, where access logs record it. It is refused.
+    const old = await call(botIntros.GET as Handler, { url: "http://localhost:3000/api/bot/intros?phone=%2B12035550101", headers: BOT });
+    expect(old.status).toBe(400);
     expect(list.body.intros[0]).toMatchObject({ intro_id: created.body.intro_id, status: "accepted", connector: { first_name: "Jordan" } });
   });
 
@@ -282,10 +287,12 @@ describe("the bot conversation (section 9.3)", () => {
     ).body;
     const id = created.intro_id;
 
-    const read = await call(botIntro.GET as Handler, { url: `http://localhost:3000/api/bot/intros/${id}?phone=%2B12035550101`, headers: BOT, params: { id } });
+    const read = await bot(botIntroRead.POST as Handler, { phone: MAYA }, { id });
+    const oldRead = await call(botIntro.GET as Handler, { url: `http://localhost:3000/api/bot/intros/${id}?phone=%2B12035550101`, headers: BOT, params: { id } });
+    expect(oldRead.status).toBe(400);
     expect(read.body.intro).toMatchObject({ intro_id: id, status: "drafted", message: "Hey Jordan", connector: { netid: "demo_jordan" } });
     expect(JSON.stringify(read.body)).not.toContain(JORDAN);
-    const notTheirs = await call(botIntro.GET as Handler, { url: `http://localhost:3000/api/bot/intros/${id}?phone=%2B12035550103`, headers: BOT, params: { id } });
+    const notTheirs = await bot(botIntroRead.POST as Handler, { phone: "+12035550103" }, { id });
     expect(notTheirs.status).toBe(404);
 
     // The connector's phone: only to the requester's bot session, only while the connector's phone is verified.
@@ -316,8 +323,7 @@ describe("the bot conversation (section 9.3)", () => {
     const defs = botToolDefinitions();
     expect(defs.map((d) => d.name)).toEqual(botTools.map((t) => t.name));
     for (const def of defs) {
-      expect(def.type).toBe("function");
-      expect(def.parameters.type).toBe("object");
+      expect(def.input_schema.type).toBe("object");
       expect(def.description.length).toBeGreaterThan(60); // says when to call it, not just what it does
     }
     const fs = await import("node:fs");

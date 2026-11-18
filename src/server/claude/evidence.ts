@@ -1,6 +1,6 @@
 /**
  * Evidence integrity (section 7.3, step 5): an evidence URL the agent reports
- * counts only if the same page appears in the citations xAI returned for that
+ * counts only if the same page is one Claude actually retrieved or cited in that
  * run. This is the main defence against invented sources.
  */
 
@@ -25,6 +25,12 @@ export function isCited(url: string, citations: string[]): boolean {
   const norm = normalizeUrl(url);
   if (!norm) return false;
   return citations.some((c) => normalizeUrl(c) === norm);
+}
+
+/** True when the run retrieved at least one page on the same host as `url`. */
+export function isCitedHost(url: string, citations: string[]): boolean {
+  const host = hostOf(url);
+  return Boolean(host) && citations.some((c) => hostOf(c) === host);
 }
 
 /** Keep only the evidence items whose URL the run actually cited. */
@@ -63,7 +69,7 @@ export function classifySource(url: string, clubWebsite?: string | null): Source
   const clubHost = hostOf(clubWebsite);
   if (clubHost && (host === clubHost || host.endsWith(`.${clubHost}`))) return "club_site";
   if (host === "yaleconnect.yale.edu") return "yale_connect";
-  if (host.endsWith("linkedin.com")) return "linkedin";
+  if (host === "linkedin.com" || host.endsWith(".linkedin.com")) return "linkedin";
   if (CAMPUS_NEWS_HOSTS.some((h) => host === h || host.endsWith(`.${h}`))) return "campus_news";
   // Student organisation sites hosted by Yale.
   if (host.endsWith(".yale.edu") || host === "yale.edu") return "club_site";

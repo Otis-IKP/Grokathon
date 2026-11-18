@@ -1,4 +1,5 @@
-export type Role = "member" | "board";
+/** `alum` only comes from the app; the mock graph has current members and board. */
+export type Role = "member" | "board" | "alum";
 
 export interface User {
   /** Mock: a seed id such as "maya". HTTP: the person's NetID. */

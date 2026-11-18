@@ -57,7 +57,7 @@ describe("HttpBackend against the app's Bot API", () => {
         });
       }
       if (url === "/api/bot/intros") return send(200, { intro_id: INTRO_ID, status: "drafted", response_url: "https://app.test/i/tok" });
-      if (url.startsWith(`/api/bot/intros/${INTRO_ID}?phone=`)) {
+      if (url === `/api/bot/intros/${INTRO_ID}/read`) {
         return send(200, {
           intro: { intro_id: INTRO_ID, status: "drafted", message: "Hey Jordan", club: CLUB, connector: JORDAN_CARD, created_at: new Date().toISOString(), response_url: "https://app.test/i/tok" },
         });

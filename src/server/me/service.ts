@@ -1,11 +1,14 @@
-import { and, eq, inArray, or } from "drizzle-orm";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { maskPhone } from "@/lib/phone";
 import type { CurrentUser } from "@/server/auth/guards";
 import type { Db } from "@/server/db/client";
 import {
+  agentRuns,
+  botState,
   experiences,
   friendships,
   intros,
+  jobs,
   memberships,
   pathSearches,
   people,
@@ -86,6 +89,24 @@ export async function deleteAccount(db: Db, me: CurrentUser): Promise<void> {
     await tx.delete(intros).where(or(eq(intros.requesterNetid, netid), eq(intros.connectorNetid, netid)));
     await tx.update(intros).set({ targetNetid: null }).where(eq(intros.targetNetid, netid));
     await tx.delete(pathSearches).where(eq(pathSearches.requesterNetid, netid));
+    // Other people's saved searches hold a copy of this person's card; those searches are simply re-run.
+    await tx.delete(pathSearches).where(sql`${pathSearches.results}::text like ${`%"netid": "${netid}"%`}`);
+    // Research about this person: their jobs (payloads and results) and what the agents were sent and returned.
+    const theirJobs = await tx
+      .select({ id: jobs.id })
+      .from(jobs)
+      .where(
+        or(
+          sql`${jobs.payload}->>'user_id' = ${me.user.id}`,
+          sql`${jobs.payload}->>'netid' = ${netid}`,
+          sql`${jobs.payload}->>'membership_id' in (select id::text from memberships where netid = ${netid})`,
+        ),
+      );
+    const jobIds = theirJobs.map((j) => j.id);
+    if (jobIds.length > 0) {
+      await tx.delete(agentRuns).where(inArray(agentRuns.jobId, jobIds));
+      await tx.delete(jobs).where(inArray(jobs.id, jobIds));
+    }
     await tx.delete(friendships).where(or(eq(friendships.requesterNetid, netid), eq(friendships.addresseeNetid, netid)));
     await tx
       .delete(memberships)
@@ -93,6 +114,8 @@ export async function deleteAccount(db: Db, me: CurrentUser): Promise<void> {
         and(eq(memberships.netid, netid), inArray(memberships.source, ["self_report", "linkedin_pdf", "linkedin_url"])),
       );
     await tx.delete(experiences).where(eq(experiences.userId, me.user.id));
+    // The bot's saved conversation for their phone.
+    if (me.user.phoneE164) await tx.delete(botState).where(eq(botState.key, `phone:${me.user.phoneE164}`));
     await tx.delete(phoneLinkCodes).where(eq(phoneLinkCodes.userId, me.user.id));
     await tx.delete(users).where(eq(users.id, me.user.id));
     await tx

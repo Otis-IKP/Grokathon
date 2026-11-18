@@ -1,6 +1,7 @@
-import type { Backend, Club, ClubMatch, Intro, IntroAnswer, LinkResult, PathResult, PathSearch, User } from "../types";
+import type { Backend, Club, ClubMatch, Intro, IntroAnswer, LinkResult, PathResult, PathSearch, Role, User } from "../types";
 import { IntroAlreadyAnsweredError } from "../types";
 import { BackendError } from "./Backend";
+import type { PhoneState, StateStore } from "../state/store";
 
 const TIMEOUT_MS = 10_000;
 
@@ -38,16 +39,36 @@ type ErrorBody = { error?: { code?: string; message?: string } };
 /**
  * Talks to the NEPO app's Bot API. Every call sends `Authorization: Bearer {secret}`
  * and identifies the texter by phone; the app never accepts a user id from the bot.
- * Intros this process created are cached so the /d/:introId link can find the
- * requester's phone; after a restart those links stop working, which is intended.
+ * The /d/:introId link carries the requester's phone (encrypted), so it works on
+ * any instance; intros this process created are also cached as a fallback for
+ * a link without one.
  */
-export class HttpBackend implements Backend {
+export class HttpBackend implements Backend, StateStore {
   private readonly created = new Map<string, Intro>();
 
   constructor(
     private readonly baseUrl: string,
     private readonly secret: string,
   ) {}
+
+  /** Per-phone bot state is kept in the app's database (POST /api/bot/state/*), never in a URL. */
+  async loadState(phone: string): Promise<PhoneState | null> {
+    const body = await this.post<{ state: PhoneState | null }>("/api/bot/state/get", { phone });
+    return body.state;
+  }
+
+  async saveState(phone: string, state: PhoneState | null): Promise<void> {
+    await this.post("/api/bot/state/put", { phone, state });
+  }
+
+  async claim(key: string): Promise<boolean> {
+    const body = await this.post<{ claimed: boolean }>("/api/bot/state/claim", { key });
+    return body.claimed;
+  }
+
+  async release(key: string): Promise<void> {
+    await this.post("/api/bot/state/claim", { key, release: true });
+  }
 
   async getUserByPhone(phone: string): Promise<User | null> {
     try {
@@ -138,9 +159,8 @@ export class HttpBackend implements Backend {
     const phone = requesterPhone ?? this.created.get(id)?.requesterPhone;
     if (!phone) return null;
     try {
-      const body = await this.get<{ intro: AppIntro }>(
-        `/api/bot/intros/${encodeURIComponent(id)}?phone=${encodeURIComponent(phone)}`,
-      );
+      // The phone goes in the body: a query string would put it in the app's access logs.
+      const body = await this.post<{ intro: AppIntro }>(`/api/bot/intros/${encodeURIComponent(id)}/read`, { phone });
       const intro = toIntro(body.intro, phone);
       this.created.set(intro.id, intro);
       return intro;
@@ -244,8 +264,10 @@ function toClub(card: ClubCard): Club {
   };
 }
 
-function toRole(role: string): "member" | "board" {
-  return role === "board" ? "board" : "member";
+/** Alumni are passed through as alumni, so the model does not call a former member a current one. */
+function toRole(role: string): Role {
+  if (role === "board" || role === "alum") return role;
+  return "member";
 }
 
 function toPath(result: AppPathResult): PathResult {

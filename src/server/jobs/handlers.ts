@@ -21,7 +21,7 @@ import { applyAffiliations, setLinkedinStatus } from "@/server/linkedin/service"
 import { applyVerdict, isOwnSource, upsertMembership, type Evidence } from "@/server/memberships/service";
 import { matchRosterName } from "@/server/people/match";
 import { displayName } from "@/server/people/service";
-import { classifySource, filterCited, isCited, isStrongSource } from "@/server/xai/evidence";
+import { classifySource, filterCited, isCited, isCitedHost, isStrongSource } from "@/server/claude/evidence";
 import { jobs } from "@/server/db/schema";
 import type { JobPayloads } from "./queue";
 import { PermanentJobError, type JobHandler, type JobOutcome } from "./run";
@@ -170,7 +170,13 @@ const crawlRoster: JobHandler = async (db, job) => {
     { jobId: job.id },
   );
 
-  const website = club.website ?? (output.website && /^https?:\/\//i.test(output.website) ? output.website : null);
+  // The agent's idea of the club's website is kept only if a page on that host
+  // was actually retrieved: evidence on the club's own site can verify a member.
+  const website =
+    club.website ??
+    (output.website && /^https?:\/\//i.test(output.website) && isCitedHost(output.website, citations)
+      ? output.website
+      : null);
   // Evidence integrity: a roster whose page was not cited is not used.
   const rosterCited = Boolean(output.roster_url && isCited(output.roster_url, citations));
   await db
@@ -247,7 +253,7 @@ const researchPerson: JobHandler = async (db, job) => {
       name: displayName(person),
       college: person.college,
       year: person.year,
-      major: person.major,
+      major: null, // not kept (privacy rule 2)
       knownClubs: known.map((c) => c.name),
     },
     { jobId: job.id },

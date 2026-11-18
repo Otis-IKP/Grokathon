@@ -32,6 +32,8 @@ export async function matchRosterName(
         sql`(lower(${people.lastName}) = ${last} or lower(${people.lastName}) like ${"%" + last} or lower(${people.lastName}) like ${"%" + last.slice(0, 3) + "%"})`,
       ),
     )
+    // Exact last-name matches first, so the cap never drops the likeliest candidates.
+    .orderBy(sql`case when lower(${people.lastName}) = ${last} then 0 else 1 end`, people.netid)
     .limit(500);
   return pickRosterMatch(roster, candidates);
 }

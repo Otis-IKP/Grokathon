@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { rateLimit } from "@/lib/rateLimit";
 import { appRoute, parseBody } from "@/server/api/route";
 import { createIntro, listIntros } from "@/server/intros/service";
 
@@ -17,6 +18,7 @@ const body = z.object({
 /** Creates the intro in `drafted`. It reaches the connector's inbox once marked sent. */
 export const POST = appRoute(async ({ req, db, me }) => {
   const input = await parseBody(req, body);
+  await rateLimit(db, `intros:create:${me.user.id}`, 20, 60 * 60_000);
   return {
     intro: await createIntro(db, {
       requesterNetid: me.person.netid,

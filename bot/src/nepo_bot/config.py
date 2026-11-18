@@ -3,6 +3,9 @@ from functools import lru_cache
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+DEFAULT_WEBHOOK_SECRET = "dev-secret-change-me"
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -10,9 +13,8 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    xai_api_key: str = ""
-    xai_base_url: str = "https://api.x.ai/v1"
-    grok_model: str = "grok-4-fast-reasoning"
+    anthropic_api_key: str = ""
+    claude_model: str = "claude-opus-5-5"
 
     host: str = "0.0.0.0"
     port: int = 8787
@@ -20,7 +22,9 @@ class Settings(BaseSettings):
     webhook_base_url: str = ""
 
     messaging_provider: str = "local"
-    messaging_webhook_secret: str = "dev-secret-change-me"
+    messaging_webhook_secret: str = DEFAULT_WEBHOOK_SECRET
+    # Local development only: lets the placeholder webhook secret above be used.
+    dev_mode: bool = False
 
     sendblue_api_key: str = ""
     sendblue_api_secret: str = ""

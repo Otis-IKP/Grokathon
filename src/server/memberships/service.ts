@@ -328,9 +328,15 @@ export async function updateMyMembership(
   patch: { role?: MembershipRole; title?: string | null; startYear?: number | null; endYear?: number | null },
 ): Promise<Membership> {
   const m = await ownMembership(db, netid, id);
+  // "Verified" and "Likely" describe the role and title a public source backed.
+  // If the owner changes either, the claim is theirs again until it is re-checked.
+  const roleChanged = patch.role !== undefined && patch.role !== m.role;
+  const titleChanged = patch.title !== undefined && (patch.title ?? null) !== (m.title ?? null);
+  const downgrade = (roleChanged || titleChanged) && (m.status === "verified" || m.status === "likely");
   const [row] = await db
     .update(memberships)
     .set({
+      ...(downgrade ? { status: "claimed", confidence: STATUS_CONFIDENCE.claimed, source: "self_report" } : {}),
       ...(patch.role ? { role: patch.role, isCurrent: patch.role !== "alum" } : {}),
       ...(patch.title !== undefined ? { title: patch.title } : {}),
       ...(patch.startYear !== undefined ? { startYear: patch.startYear } : {}),
@@ -338,6 +344,7 @@ export async function updateMyMembership(
     })
     .where(eq(memberships.id, m.id))
     .returning();
+  if (downgrade) await enqueue(db, "validate_membership", { membership_id: row.id }, { force: true });
   return row;
 }
 

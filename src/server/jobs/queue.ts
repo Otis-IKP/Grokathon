@@ -1,4 +1,4 @@
-import { and, eq, gt, lt, sql } from "drizzle-orm";
+import { and, eq, gt, gte, lt, sql } from "drizzle-orm";
 import { execRows, type Db } from "@/server/db/client";
 import { jobs, type Job } from "@/server/db/schema";
 import { env } from "@/server/env";
@@ -15,7 +15,14 @@ export type JobPayloads = {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_ATTEMPTS = 3;
-const STUCK_AFTER_MS = 5 * 60 * 1000;
+/**
+ * A running job is presumed dead after this long. It must stay above the
+ * longest a live handler can take (AGENT_DEADLINE_MS in claude/runAgent.ts),
+ * or a healthy job would be handed to a second runner.
+ */
+const STUCK_AFTER_MS = 20 * 60 * 1000;
+/** A failed crawl or research job can be queued again after this long, not after the full TTL. */
+const FAILED_COOLOFF_MS = 60 * 60 * 1000;
 
 /** How long a finished job blocks a new one with the same dedupe key. */
 function dedupeTtlMs(type: JobType): number {
@@ -69,7 +76,9 @@ export async function enqueue<T extends JobType>(
   if (existing) {
     if (existing.status === "queued" || existing.status === "running") return { job: existing, enqueued: false };
     const finishedAt = existing.finishedAt?.getTime() ?? 0;
-    if (!opts.force && Date.now() - finishedAt < dedupeTtlMs(type)) return { job: existing, enqueued: false };
+    // The TTL spaces out successful runs. A failed one found nothing, so it only waits out a short cool-off.
+    const wait = existing.status === "failed" ? Math.min(FAILED_COOLOFF_MS, dedupeTtlMs(type)) : dedupeTtlMs(type);
+    if (!opts.force && Date.now() - finishedAt < wait) return { job: existing, enqueued: false };
     const [job] = await db
       .update(jobs)
       .set({
@@ -147,7 +156,7 @@ export async function failJob(db: Db, job: Job, error: string, payload?: unknown
       .set({
         status: "queued",
         runAfter: new Date(Date.now() + job.attempts * 60_000),
-        lockedAt: null,
+        // locked_at is kept: it is when the attempt started, which the hourly budget counts.
         error: error.slice(0, 2000),
       })
       .where(eq(jobs.id, job.id));
@@ -160,13 +169,28 @@ export async function failJob(db: Db, job: Job, error: string, payload?: unknown
   return "failed";
 }
 
-/** Jobs stuck in `running` for more than 5 minutes go back to the queue. */
-export async function requeueStuck(db: Db): Promise<number> {
+/**
+ * Jobs whose runner died mid-flight (still `running` long after they were
+ * claimed). They go back to the queue while attempts remain; a job that has
+ * used all its attempts is failed instead, so nothing is retried forever.
+ */
+export async function recoverStuck(db: Db): Promise<{ requeued: number; failed: Job[] }> {
   const cutoff = new Date(Date.now() - STUCK_AFTER_MS);
-  const rows = await db
+  const stuck = and(eq(jobs.status, "running"), lt(jobs.lockedAt, cutoff));
+  const failed = await db
     .update(jobs)
-    .set({ status: "queued", lockedAt: null, runAfter: new Date() })
-    .where(and(eq(jobs.status, "running"), lt(jobs.lockedAt, cutoff)))
+    .set({ status: "failed", finishedAt: new Date(), error: "Stopped responding and ran out of attempts." })
+    .where(and(stuck, gte(jobs.attempts, MAX_ATTEMPTS)))
+    .returning();
+  const requeued = await db
+    .update(jobs)
+    .set({ status: "queued", runAfter: new Date() })
+    .where(and(stuck, lt(jobs.attempts, MAX_ATTEMPTS)))
     .returning({ id: jobs.id });
-  return rows.length;
+  return { requeued: requeued.length, failed };
+}
+
+/** Number of stuck jobs put back in the queue. */
+export async function requeueStuck(db: Db): Promise<number> {
+  return (await recoverStuck(db)).requeued;
 }

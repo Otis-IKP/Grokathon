@@ -23,12 +23,26 @@ const envSchema = z
       .default("")
       .transform((value) => value.trim().replace(/\/+$/, "")),
     PORT: z.coerce.number().int().positive().default(3001),
+    /** Safe by default: texts are logged, not sent, until a deploy sets DRY_RUN=false on purpose. */
     DRY_RUN: z
+      .enum(["true", "false"])
+      .default("true")
+      .transform((value) => value === "true"),
+    /** The mock graph texts demo numbers. Sending for real from it has to be asked for explicitly. */
+    ALLOW_MOCK_LIVE_SENDS: z
       .enum(["true", "false"])
       .default("false")
       .transform((value) => value === "true"),
   })
   .superRefine((value, ctx) => {
+    if (value.BACKEND_MODE === "mock" && !value.DRY_RUN && !value.ALLOW_MOCK_LIVE_SENDS) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["BACKEND_MODE"],
+        message:
+          "BACKEND_MODE=mock with DRY_RUN=false would send real texts from the demo graph. Set BACKEND_MODE=http, or DRY_RUN=true, or ALLOW_MOCK_LIVE_SENDS=true for a staged demo",
+      });
+    }
     if (!value.DRY_RUN) {
       for (const key of ["SENDBLUE_API_KEY_ID", "SENDBLUE_API_SECRET", "SENDBLUE_FROM_NUMBER"] as const) {
         if (!value[key]) {

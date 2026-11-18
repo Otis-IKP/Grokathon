@@ -180,7 +180,7 @@ export function AskSheet({
           </Button>
           <p className="text-center text-xs text-muted-foreground">
             {connector.is_user
-              ? `Through NEPO, the request appears in ${connector.first_name}'s inbox. NEPO never texts anyone for you.`
+              ? `Through NEPO, the request appears in ${connector.first_name}'s inbox. The app doesn't text anyone; they answer when they next open NEPO.`
               : `${connector.first_name} isn't on NEPO yet, so send it from your own phone.`}
           </p>
         </div>

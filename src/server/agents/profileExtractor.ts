@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { Db } from "@/server/db/client";
 import { env } from "@/server/env";
 import { hashedPlaceholder } from "@/server/privacy/redact";
-import { runAgent } from "@/server/xai/runAgent";
+import { runAgent } from "@/server/claude/runAgent";
 import { affiliationSchema, loadPrompt, tag } from "./shared";
 
 export const profileExtractorOutput = z.object({
@@ -24,7 +24,7 @@ export async function runProfileExtractor(
     db,
     {
       name: "profileExtractor",
-      model: env().XAI_MODEL_FAST_RESOLVED,
+      model: env().CLAUDE_MODEL_FAST_RESOLVED,
       system: loadPrompt("profileExtractor"),
       user: [tag("student_name", input.name), tag("class_year", input.year), `<source>\n${tag("profile_text", text)}\n</source>`].join(
         "\n",

@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { buildSystemPrompt } from "../src/agent/systemPrompt";
 import { MockBackend } from "../src/backend/MockBackend";
@@ -40,10 +43,10 @@ describe("findPaths", () => {
   });
 
   it("gives any phone the same warm graph", async () => {
-    const fromDc = await backend.getUserByPhone("+15550009101");
+    const fromElsewhere = await backend.getUserByPhone("+15550107777");
     const fromRandom = await backend.getUserByPhone("+15559999999");
-    expect(fromDc?.id.startsWith("guest_")).toBe(true);
-    expect(fromDc?.phone).toBe("+15550009101");
+    expect(fromElsewhere?.id.startsWith("guest_")).toBe(true);
+    expect(fromElsewhere?.phone).toBe("+15550107777");
     expect(fromRandom?.phone).toBe("+15559999999");
 
     const paths = await pathsFor(backend, fromRandom?.id ?? "", "whiffs");
@@ -52,13 +55,13 @@ describe("findPaths", () => {
 
   it("addresses Otis and Arden by name and still finds Jordan", async () => {
     const backend = new MockBackend({
-      DEMO_MAYA_PHONE: "+15550009105",
-      DEMO_JORDAN_PHONE: "+15550009103",
-      DEMO_ALSO_PHONES: "+15550009104,+15550009102",
+      DEMO_MAYA_PHONE: "+15550000101",
+      DEMO_JORDAN_PHONE: "+15550000104",
+      DEMO_ALSO_PHONES: "+15550000102,+15550000103",
     });
-    const otis = await backend.getUserByPhone("+1 (555) 000-9104");
-    const arden = await backend.getUserByPhone("+15550009102");
-    const jesse = await backend.getUserByPhone("+15550009103");
+    const otis = await backend.getUserByPhone("+1 (555) 000-0102");
+    const arden = await backend.getUserByPhone("+15550000103");
+    const jesse = await backend.getUserByPhone("+15550000104");
 
     expect(otis?.name).toBe("Otis");
     expect(arden?.name).toBe("Arden");
@@ -69,5 +72,35 @@ describe("findPaths", () => {
 
     const paths = await pathsFor(backend, otis?.id ?? "", "ysig");
     expect(paths[0]?.connector.name).toBe("Jordan Hale");
+  });
+
+  it("takes extra names from DEMO_STUDENT_NAMES and keeps the DEMO_*_PHONE overrides", async () => {
+    const backend = new MockBackend({
+      DEMO_STUDENT_NAMES: "+15550000201=Robin, (555) 000-0202 = Sky",
+      DEMO_JORDAN_PHONE: "+15550000203",
+    });
+    expect((await backend.getUserByPhone("+15550000201"))?.name).toBe("Robin");
+    expect((await backend.getUserByPhone("+15550000202"))?.name).toBe("Sky");
+    expect((await backend.getUserByPhone("+15550000203"))?.name).toBe("Jordan Hale");
+  });
+
+  it("has no real-looking phone number anywhere in the bot's source, tests or docs", () => {
+    const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+    const files = ["README.md", ".env.example", "public/chat.html", "scripts/simulate.ts"];
+    for (const dir of ["src", "tests"]) {
+      for (const entry of fs.readdirSync(path.join(root, dir), { recursive: true })) {
+        const file = path.join(dir, String(entry));
+        if (fs.statSync(path.join(root, file)).isFile()) files.push(file);
+      }
+    }
+    const offenders: string[] = [];
+    for (const file of files) {
+      const text = fs.readFileSync(path.join(root, file), "utf8");
+      // North American numbers written with a country code. Fictional ones use 555.
+      for (const match of text.matchAll(/\+1[\s(.-]*(\d{3})[\s).-]*(\d{3})[\s.-]*\d{4}\b/g)) {
+        if (match[1] !== "555" && match[2] !== "555") offenders.push(`${file}: ${match[0].slice(0, 5)}...`);
+      }
+    }
+    expect(offenders).toEqual([]);
   });
 });

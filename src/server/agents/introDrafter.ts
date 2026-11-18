@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Db } from "@/server/db/client";
 import { env } from "@/server/env";
-import { runAgent } from "@/server/xai/runAgent";
+import { runAgent } from "@/server/claude/runAgent";
 import { loadPrompt, tag } from "./shared";
 
 export type IntroTone = "casual" | "polite";
@@ -67,7 +67,7 @@ export async function draftIntroMessage(db: Db, input: IntroDraftInput): Promise
   ].join("\n");
   const { output } = await runAgent(db, {
     name: "introDrafter",
-    model: env().XAI_MODEL_FAST_RESOLVED,
+    model: env().CLAUDE_MODEL_FAST_RESOLVED,
     system: loadPrompt("introDrafter"),
     user,
     webSearch: false,

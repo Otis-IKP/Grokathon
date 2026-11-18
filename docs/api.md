@@ -160,7 +160,7 @@ Returns: `{ status: "sent" }`
 
 Error codes: `user_not_linked`, `intro_not_found`, `invalid_state`
 
-### `list_intros` — `GET /api/bot/intros`
+### `list_intros` — `POST /api/bot/intros/list`
 
 List the user's recent intros and their status. Call this when the user asks whether someone replied or what happened to an intro. A status of declined should be relayed gently as "not right now", with no reason.
 

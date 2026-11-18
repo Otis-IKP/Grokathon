@@ -3,7 +3,7 @@ import { and, eq, isNull, lt, ne } from "drizzle-orm";
 import { AppError } from "@/lib/errors";
 import { normalizePhone } from "@/lib/phone";
 import type { Db } from "@/server/db/client";
-import { phoneLinkCodes, users, type User } from "@/server/db/schema";
+import { botState, phoneLinkCodes, users, type User } from "@/server/db/schema";
 import { env } from "@/server/env";
 
 const CODE_TTL_MS = 10 * 60 * 1000;
@@ -32,6 +32,13 @@ export async function linkPhone(db: Db, phoneRaw: string, code: string): Promise
   if (!row || row.usedAt) throw new AppError("invalid_code", "That code is not valid.");
   if (row.expiresAt.getTime() < Date.now()) throw new AppError("code_expired", "That code has expired. Get a new one in the app.");
   return db.transaction(async (tx) => {
+    // Claim the code first: two texts racing with the same code cannot both link.
+    const [claimed] = await tx
+      .update(phoneLinkCodes)
+      .set({ usedAt: new Date() })
+      .where(and(eq(phoneLinkCodes.code, row.code), isNull(phoneLinkCodes.usedAt)))
+      .returning({ code: phoneLinkCodes.code });
+    if (!claimed) throw new AppError("invalid_code", "That code is not valid.");
     await tx
       .update(users)
       .set({ phoneE164: null, phoneVerifiedAt: null })
@@ -41,12 +48,14 @@ export async function linkPhone(db: Db, phoneRaw: string, code: string): Promise
       .set({ phoneE164: phone, phoneVerifiedAt: new Date() })
       .where(eq(users.id, row.userId))
       .returning();
-    await tx.update(phoneLinkCodes).set({ usedAt: new Date() }).where(eq(phoneLinkCodes.code, row.code));
     return user;
   });
 }
 
 export async function unlinkPhone(db: Db, userId: string): Promise<void> {
+  const [user] = await db.select({ phone: users.phoneE164 }).from(users).where(eq(users.id, userId));
+  // The bot's saved conversation belongs to whoever held the number.
+  if (user?.phone) await db.delete(botState).where(eq(botState.key, `phone:${user.phone}`));
   await db.update(users).set({ phoneE164: null, phoneVerifiedAt: null }).where(eq(users.id, userId));
 }
 

@@ -1,10 +1,10 @@
-"""Local terminal chat with the Grok NEPO agent (no iMessage needed)."""
+"""Local terminal chat with the Claude NEPO agent (no iMessage needed)."""
 
 from __future__ import annotations
 
 import sys
 
-from nepo_bot.agent.grok import GrokAgent
+from nepo_bot.agent.claude import ClaudeAgent
 from nepo_bot.backend.client import BackendClient
 from nepo_bot.config import get_settings
 from nepo_bot.messaging.providers import build_sender
@@ -12,18 +12,18 @@ from nepo_bot.messaging.providers import build_sender
 
 async def main() -> None:
     settings = get_settings()
-    if not settings.xai_api_key:
-        print("Missing XAI_API_KEY. Copy .env.example → .env and paste your key.")
+    if not settings.anthropic_api_key:
+        print("Missing ANTHROPIC_API_KEY. Copy .env.example → .env and paste your key.")
         sys.exit(1)
 
     backend = BackendClient(settings)
     sender = build_sender(settings)
-    agent = GrokAgent(settings, backend, sender)
+    agent = ClaudeAgent(settings, backend, sender)
     phone = settings.demo_user_phone
 
-    print("NEPO local REPL (Grok only). Type 'quit' or 'reset'.")
+    print("NEPO local REPL (Claude). Type 'quit' or 'reset'.")
     print(
-        f"Demo user phone={phone} id={settings.demo_user_id} model={settings.grok_model}"
+        f"Demo user phone={phone} id={settings.demo_user_id} model={settings.claude_model}"
     )
     print("Try: I want to be on YSIG\n")
 

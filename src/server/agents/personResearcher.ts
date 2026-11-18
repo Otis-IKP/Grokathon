@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Db } from "@/server/db/client";
-import { runAgent } from "@/server/xai/runAgent";
+import { runAgent } from "@/server/claude/runAgent";
 import { affiliationSchema, loadPrompt, tag } from "./shared";
 
 export const personResearchSchema = z.object({

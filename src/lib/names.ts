@@ -75,6 +75,16 @@ export function pickRosterMatch(
   if (pool.length === 1) {
     const only = pool[0];
     if (roster.classYear != null && only.year != null && only.year !== roster.classYear) return { kind: "none" };
+    // "Sam Lee" on a roster and "Samantha Lee" in the directory may be two people
+    // (the directory covers Yale College only). A nickname-style match needs the
+    // roster's class year or college to agree; otherwise a person reviews it.
+    const first = nameTokens(roster.fullName)[0] ?? "";
+    const exact = [only.firstName, only.preferredName ?? ""].some((n) => (nameTokens(n)[0] ?? "") === first);
+    const corroborated =
+      (roster.classYear != null && only.year === roster.classYear) ||
+      (roster.college != null &&
+        roster.college.trim().toLowerCase() === (only.college ?? "").trim().toLowerCase());
+    if (!exact && !corroborated) return { kind: "ambiguous", netids: [only.netid] };
     return { kind: "match", netid: only.netid };
   }
   return { kind: "ambiguous", netids: pool.map((c) => c.netid) };

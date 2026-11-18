@@ -17,8 +17,26 @@ type Base = { req: Request; params: Params; db: Db; url: URL };
 type Result = unknown | Response;
 
 function toResponse(result: Result, headers?: HeadersInit): Response {
-  if (result instanceof Response) return result;
+  if (result instanceof Response) {
+    if (!headers) return result;
+    // Keep per-route headers (CORS) on hand-built responses such as a preflight 204.
+    const merged = new Headers(result.headers);
+    new Headers(headers).forEach((value, key) => {
+      if (!merged.has(key)) merged.set(key, value);
+    });
+    return new Response(result.body, { status: result.status, statusText: result.statusText, headers: merged });
+  }
   return Response.json(result ?? { ok: true }, { headers });
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Path segments that are row ids. Anything else in them can't match a row, so it is a 404, not a failed query. */
+const UUID_PARAMS = new Set(["id", "searchId"]);
+
+function checkParams(params: Params): void {
+  for (const [key, value] of Object.entries(params)) {
+    if (UUID_PARAMS.has(key) && !UUID.test(value)) throw new AppError("not_found", "Not found.");
+  }
 }
 
 /** Run any jobs the handler queued once the response is sent, so users don't wait for the cron. */
@@ -47,6 +65,7 @@ function build<Extra>(
       const db = getDb();
       const extra = await authorise(req, db);
       const params = (await nextCtx?.params) ?? {};
+      checkParams(params);
       const result = await handler({ req, params, db, url: new URL(req.url), ...extra });
       if (opts.kick !== false && req.method !== "GET") kickJobs(db);
       return toResponse(result, headers);

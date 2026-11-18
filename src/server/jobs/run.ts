@@ -1,7 +1,7 @@
 import type { Db } from "@/server/db/client";
 import type { Job } from "@/server/db/schema";
 import { redactPhones } from "@/server/privacy/redact";
-import { claimNext, completeJob, failJob, requeueStuck } from "./queue";
+import { claimNext, completeJob, failJob, recoverStuck } from "./queue";
 
 export type JobOutcome = { result: unknown; payload?: unknown };
 export type JobHandler = (db: Db, job: Job) => Promise<JobOutcome>;
@@ -39,7 +39,13 @@ export async function runJob(db: Db, job: Job): Promise<"done" | "queued" | "fai
 /** Claim and run up to `max` ready jobs. Used by the tick route, the worker and post-response kicks. */
 export async function drainJobs(db: Db, max = 5): Promise<{ ran: number; done: number; failed: number; requeued: number }> {
   const stats = { ran: 0, done: 0, failed: 0, requeued: 0 };
-  stats.requeued = await requeueStuck(db);
+  const recovered = await recoverStuck(db);
+  stats.requeued = recovered.requeued;
+  for (const dead of recovered.failed) {
+    // Same clean-up as any other final failure (e.g. LinkedIn status leaves "reading").
+    stats.failed++;
+    await (await import("./handlers")).onJobFailed(db, dead, dead.error ?? "Stopped responding.");
+  }
   for (let i = 0; i < max; i++) {
     const job = await claimNext(db);
     if (!job) break;

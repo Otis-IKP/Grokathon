@@ -1,13 +1,13 @@
 ---
-description: Grokathon NEPO — Grok only
+description: NEPO — Claude only
 globs:
   - "**/*"
 ---
 
-# Grokathon constraints
+# Model constraints
 
-- Use **only Grok** via xAI (`https://api.x.ai/v1`, `XAI_API_KEY`). Do not add Claude, OpenAI, Gemini, or other LLM providers.
-- Tobi owns `bot/` (iMessage + Grok agent). Otis owns backend/app. Arden owns website.
-- Prefer stub backend (`USE_STUB_BACKEND=true`) until Otis API is live; keep tool names stable: `resolve_club`, `find_paths`, `draft_intro`, `send_message`, `lookup_user`.
-- System prompt lives in `bot/src/nepo_bot/prompts/system.md`.
+- Use **only Claude** through the Anthropic API (`@anthropic-ai/sdk` / `anthropic`, `ANTHROPIC_API_KEY`). Do not add Grok, OpenAI, Gemini, or other LLM providers.
+- Default model is `claude-opus-5-5` (`CLAUDE_MODEL`). Do not send `temperature`, `budget_tokens` or a forced `tool_choice`; they are rejected.
+- The live bot is `messaging/` (Tobi). `bot/` is an unused Python scaffold. Otis owns the app (`src/`), whose research agents live in `src/server/claude/` and `src/server/agents/`. Arden owns `website/`.
+- The Bot API contract is `src/server/bot/tools.ts` → `docs/bot-tools.json`. Add fields, never rename.
 - No Campus Shape references. Keep student-voice drafts, not recruiter voice.

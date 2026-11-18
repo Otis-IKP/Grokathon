@@ -11,6 +11,7 @@
       form { display: flex; gap: 0.5rem; margin-top: 1rem; }
       input { flex: 1; min-height: 2.75rem; padding: 0.4rem 0.6rem; }
       button { min-height: 2.75rem; padding: 0.4rem 0.9rem; }
+      #error { color: #b00020; margin: 0.6rem 0 0; min-height: 1.2em; }
     </style>
   </head>
   <body>
@@ -21,11 +22,13 @@
       <input id="text" placeholder="I want to be on YSIG" autocomplete="off" />
       <button type="submit">Send</button>
     </form>
+    <p id="error" role="alert"></p>
     <script>
       const log = document.querySelector("#log");
       const form = document.querySelector("#form");
       const phone = document.querySelector("#phone");
       const text = document.querySelector("#text");
+      const errorLine = document.querySelector("#error");
 
       function add(who, body) {
         const item = document.createElement("li");
@@ -43,12 +46,33 @@
         // POST /chat needs WEBHOOK_SECRET: open this page as /?secret=... and it is passed along.
         const secret = new URLSearchParams(location.search).get("secret") || "";
         const chatUrl = location.pathname.replace(/\/?$/, "/") + "chat?secret=" + encodeURIComponent(secret);
-        const response = await fetch(chatUrl, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ phone: phone.value, text: message }),
-        });
-        const data = await response.json();
+        errorLine.textContent = "";
+        let response;
+        try {
+          response = await fetch(chatUrl, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ phone: phone.value, text: message }),
+          });
+        } catch {
+          errorLine.textContent = "Could not reach NEPO. Check that the server is running, then try again.";
+          return;
+        }
+        if (response.status === 401) {
+          errorLine.textContent = "Wrong or missing secret. Open this page as ?secret=YOUR_WEBHOOK_SECRET and send it again.";
+          return;
+        }
+        if (!response.ok) {
+          errorLine.textContent = "NEPO returned an error (" + response.status + "). Your message was not handled. Try again.";
+          return;
+        }
+        let data;
+        try {
+          data = await response.json();
+        } catch {
+          errorLine.textContent = "NEPO sent a reply this page could not read. Try again.";
+          return;
+        }
         for (const reply of data.replies || []) add("NEPO", reply);
       });
     </script>

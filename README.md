@@ -14,9 +14,12 @@ This repository holds all three parts of NEPO:
 |---|---|---|---|
 | **The app** | repo root (`src/`) | Next.js web app and API. Sign-in, friends, clubs, path finding, the intro inbox, and the Bot API. Holds all the data. | Otis |
 | **The bot** | `messaging/` | Express server behind the NEPO iMessage number. Talks to the student, using Claude with tools that call the app. | Tobi |
+
+Every model call in the project goes to **Claude** through the Anthropic API: the bot's conversation and
+the app's research agents.
 | **The website** | `website/` | Static Astro site at [yalenepo.xyz](https://yalenepo.xyz). Explains NEPO and shows a sample path graph. | Arden |
 
-`bot/` is an older Python scaffold and is not used. The app's full build spec is
+`bot/` is an older Python scaffold (also on Claude now) and is not used. The app's full build spec is
 [Grokathon-Otis-App.md](Grokathon-Otis-App.md); section numbers below ("spec 11.3") refer to it.
 
 ---
@@ -65,7 +68,7 @@ flowchart LR
     bot -- "Bot API<br/>bearer secret" --> app["App<br/>Next.js + Postgres"]
     app -- "intro answered<br/>webhook" --> bot
     browser(["Student's browser"]) --> app
-    app -- "research agents" --> grok["Grok<br/>(xAI API)"]
+    app -- "research agents<br/>web search" --> claude
     app -- "directory" --> yalies["Yalies API"]
     app -- "sign-in" --> cas["Yale CAS"]
     website["Website<br/>yalenepo.xyz"] -- "path graph<br/>(share token)" --> app
@@ -73,9 +76,10 @@ flowchart LR
 
 - **The app decides; the bot talks.** Every fact (who is friends with whom, who is in which club, what
   state an intro is in) lives in the app's database. The bot keeps only the current conversation.
-- **Two models, two jobs.** The bot uses **Claude** to hold the conversation and call tools. The app uses
-  **Grok** for background research: reading LinkedIn profiles, crawling club rosters and checking claims.
-- **Mock mode everywhere.** The app runs without Yalies or xAI keys (`MOCK_EXTERNAL=1`), and the bot runs
+- **One model, two jobs.** The bot uses **Claude** to hold the conversation and call tools. The app uses
+  **Claude** with its web search and web fetch tools for background research: reading LinkedIn profiles,
+  crawling club rosters and checking claims.
+- **Mock mode everywhere.** The app runs without Yalies or Anthropic keys (`MOCK_EXTERNAL=1`), and the bot runs
   without the app (`BACKEND_MODE=mock`, a small fictional graph). Each part can be demoed on its own.
 
 ---
@@ -104,7 +108,7 @@ Your friend list is visible only to you.
 
 The hard part is knowing who is in which club. LinkedIn's API can't return someone's positions, and NEPO
 never logs in to LinkedIn or scrapes it (spec 7.1). So memberships come from four sources, each checked by
-a Grok agent:
+a Claude agent:
 
 ```
  LinkedIn URL ──► profileReader ──┐
@@ -125,10 +129,16 @@ a Grok agent:
 | `personResearcher` | yes | Looks up which clubs one directory person publicly belongs to. Runs when you add a non-user as a friend, or when a search finds few paths. |
 | `introDrafter` | no | Writes the "can you intro me?" text in the app's Ask sheet. Fast, so it runs inline rather than as a job. |
 
-All agents go through one function, `src/server/xai/runAgent.ts`, which calls xAI's Responses API. Each
-agent must finish by calling a "submit" function whose arguments are validated with zod. **Any evidence URL
-the agent didn't actually cite is removed**, and a verdict left with no evidence is downgraded. This is the
-main defence against invented sources. Every call is logged in `agent_runs`, and `/admin` shows it.
+All agents go through one function, `src/server/claude/runAgent.ts`, which calls the Anthropic Messages
+API (`claude-opus-5-5` by default, set with `CLAUDE_MODEL`). Research agents get Claude's server-side
+`web_search` and `web_fetch` tools. Each agent must finish by calling a "submit" tool whose arguments are
+validated with zod. **Any evidence URL that is not a page Claude actually retrieved or cited in that run is
+removed**, and a verdict left with no evidence is downgraded. This is the main defence against invented
+sources. Every call is logged in `agent_runs`, and `/admin` shows it.
+
+If Claude's safety classifiers decline a request, the API reruns it on Anthropic's fallback model
+(`fallbacks: "default"`); if that also declines, the job fails with the reason. One agent run is capped at
+12 minutes.
 
 **Membership statuses** decide what is shown and used:
 
@@ -142,8 +152,14 @@ main defence against invented sources. Every call is logged in `agent_runs`, and
 
 Agent work runs as **jobs** in a Postgres-backed queue (`src/server/jobs/`): `linkedin_read`,
 `linkedin_pdf`, `validate_membership`, `crawl_roster` and `research_person`. A job is tried up to 3 times
-with backoff, duplicates are collapsed, and at most `ENRICH_MAX_JOBS_PER_HOUR` jobs run per hour. Jobs run
+with backoff, duplicates are collapsed, and at most `ENRICH_MAX_JOBS_PER_HOUR` jobs run per hour. A job
+whose runner died is put back after 20 minutes, and failed once its 3 attempts are used. A failed crawl or
+research job can be queued again after an hour. Jobs run
 right after the request that queued them, and the cron `/api/internal/jobs/tick` picks up anything left.
+
+**Rate limits** (searches, friend adds, new clubs, intros, drafts, LinkedIn reads, phone-code guesses) are
+counted in Postgres (`rate_limits`, `src/lib/rateLimit.ts`), so a limit holds across every server instance.
+Only a hash of each key is stored.
 
 ### 2.4 Path finding
 
@@ -189,9 +205,18 @@ A search is saved (`path_searches`), and if results are thin it queues a roster 
 
 ```
 drafted ──► sent ──► accepted ──► completed
-   │          └────► declined   (requester sees only "not right now")
-   └──► cancelled
+   │         │ └───► declined   (requester sees only "not right now")
+   │         └─────► cancelled
+   ├──► cancelled
+   └──► accepted / declined     (the requester sent the text themselves and the connector opened the link)
 ```
+
+- Each change checks the status it is leaving, so a cancel and an answer arriving together cannot both win.
+- **One open ask per person and club.** While a request to a connector is unanswered, a second one for the
+  same club is refused. A new draft replaces an older draft.
+- **A saved search is a snapshot.** When an intro is drafted, created or sent, and before the connector's
+  phone is released, the app checks again that the connector is still listed, still allows being a
+  connector, and is still the requester's friend.
 
 - An intro is created from a saved search, so the connector and target always come from the path NEPO
   found, never from the caller's word alone.
@@ -222,12 +247,15 @@ and `/admin` (job queue, agent runs, roster names to match). It can be installed
 1. **Is this a connector answering?** If the last text the bot sent this phone was an intro request, and
    the message is a YES or NO, the bot records the answer with the app and texts the requester. Claude is
    not called. Any other message, or any later text from the bot, closes that window, so "yes" to the bot's
-   own question never accepts an intro by accident (`src/agent/connectorAsks.ts`).
+   own question never accepts an intro by accident (`src/agent/connectorAsks.ts`). The window opens only
+   once the request text has actually gone out. If two people have asked the same connector, YES/NO answers
+   the older request and the bot says whose it was and that another is waiting.
 2. **Who is this?** In `http` mode, the bot asks the app (`whoami`). For an unknown phone, a 6-digit
    message links the phone; anything else gets the sign-up link. In `mock` mode, every phone gets Maya's
    demo friends.
 3. **Run Claude.** The bot sends the conversation to Claude with five tools and runs a tool loop of at most
-   6 model calls, then texts back the reply (markdown stripped, at most three bubbles).
+   6 model calls, then texts back the reply (markdown stripped, at most three bubbles). The sixth call
+   runs with tools off, so the student always gets a reply that matches what was actually done.
 
 ### 3.2 The model call
 
@@ -235,7 +263,7 @@ and `/admin` (job queue, agent runs, roster names to match). It can be installed
   (`CLAUDE_EFFORT`), so texts come back quickly.
 - **Refusal fallback:** with `fallbacks: "default"`, if Claude's safety classifiers decline a message, the
   API reruns it on Anthropic's recommended fallback model. If the whole chain declines, the student gets a
-  short redirect.
+  short redirect, and the declined message is dropped from the history so it is not resent.
 - **History:** the last ~20 messages per phone, cut only at a message the student typed. Thinking blocks
   that no longer match the trimmed history are dropped by the API (`prefix_mismatch_behavior: "drop_block"`)
   instead of failing the request.
@@ -254,13 +282,17 @@ and `/admin` (job queue, agent runs, roster names to match). It can be installed
 **Safety checks around sending:**
 
 - `send_intro` works only on a *later* turn than the draft, only for the pending draft, and only if the
-  student's latest message is "send" or a clear yes. Claude can't send on its own initiative.
+  student's whole latest message is "send" or a plain yes ("yes but change the last line" does not count).
+  Claude can't send on its own initiative.
+- A pending draft lapses after 30 minutes, when a new search runs, or when a newer draft replaces it. An
+  intro is texted at most once, even if recording it with the app fails afterwards.
 - `save_intro_draft` accepts only connectors from the latest `find_paths` result, for the same club.
 - NEPO texts a connector only if they are a NEPO user who linked that phone themselves **and** have
   accepted the requester's friendship. Otherwise the student sends the draft from their own phone, with the
   app link for the connector.
-- The tap-to-send link (`/d/{introId}`, which opens Messages with the draft filled in) works only while the
-  intro is a draft and for 24 hours.
+- The tap-to-send link (`/d/{introId}?k=…`, which opens Messages with the draft filled in) works only
+  while the intro is a draft and for 24 hours. The `k` token is the requester's phone, encrypted with a key
+  derived from `WEBHOOK_SECRET` and tied to that intro, so the link works on any server instance.
 - Phone numbers are never passed to Claude.
 
 ### 3.4 Other routes
@@ -271,7 +303,7 @@ and `/admin` (job queue, agent runs, roster names to match). It can be installed
 | `POST /webhooks/sendblue` | Inbound texts | `?secret=WEBHOOK_SECRET` |
 | `POST /webhooks/app` | The app reports a connector's answer | `Authorization: Bearer BACKEND_API_SECRET` |
 | `GET /`, `POST /chat` | Browser test chat (acts as any phone) | `POST /chat` needs `?secret=WEBHOOK_SECRET`; open the page as `/?secret=…` and it passes it along |
-| `GET /d/:introId` | Tap-to-send redirect | draft only, 24 hours |
+| `GET /d/:introId?k=…` | Tap-to-send redirect | draft only, 24 hours, sealed token in http mode |
 | `POST /admin/reset` | Clear sessions (and mock intros) between demo runs | `?secret=WEBHOOK_SECRET` |
 
 ---
@@ -280,7 +312,8 @@ and `/admin` (job queue, agent runs, roster names to match). It can be installed
 
 With `BACKEND_MODE=http`, `messaging/src/backend/HttpBackend.ts` calls the app's Bot API at `BACKEND_URL`.
 Every request carries `Authorization: Bearer {BOT_API_SECRET}` and identifies the texter **by phone**; the
-app never accepts a user id from the bot.
+app never accepts a user id from the bot. The phone is always in the JSON body, never in the URL, so it
+does not reach access logs.
 
 ```mermaid
 sequenceDiagram
@@ -320,17 +353,18 @@ Every route, with its body and response, is in [docs/api.md](docs/api.md). In sh
 | `POST /api/bot/whoami`, `/link-phone` | Who is texting; linking a phone with the app's code |
 | `POST /api/bot/resolve-club`, `/club` | Matching a club; club details |
 | `POST /api/bot/find-paths` | Ranked paths and a `search_id` |
-| `POST /api/bot/intros`, `GET /api/bot/intros/{id}`, `POST …/sent` | Save, read and mark an intro sent |
+| `POST /api/bot/intros`, `POST /api/bot/intros/{id}/read`, `POST …/sent` | Save, read and mark an intro sent |
+| `POST /api/bot/state/get`, `/state/put`, `/state/claim` | The bot's per-phone state and once-only webhook claims (section 7) |
 | `POST /api/bot/intros/{id}/connector-phone` | The connector's phone, only under the rules in 3.3; otherwise `null` |
 | `POST /api/bot/intros/{id}/respond` | The connector answered by text |
-| `GET /api/bot/intros`, `POST /api/bot/draft-intro`, `/friends/add` | Also available (from `docs/bot-tools.json`); the Claude bot doesn't use them yet |
+| `POST /api/bot/intros/list`, `POST /api/bot/draft-intro`, `/friends/add` | Also available (from `docs/bot-tools.json`); the Claude bot doesn't use them yet |
 
 ---
 
 ## 5. Privacy rules
 
 NEPO stores who knows whom and researches students who haven't signed up, so these rules are requirements
-(spec 12). Each has a test in `tests/unit/privacy*.test.ts`.
+(spec 12). They are tested in `tests/unit/privacy*.test.ts`, `jobs.test.ts` and `regressions.test.ts`.
 
 1. **Yale only.** Every page and API route needs a CAS session, the bot secret or the cron secret. The
    exceptions are sign-in and the token-gated graph endpoint. A test fails the build if a route skips its
@@ -361,7 +395,7 @@ Before running this beyond a hackathon demo, check the Yalies API terms and Yale
 ### 6.1 The app
 
 Needs Node 22+ and pnpm. No database install and no API keys: by default the app uses an embedded
-Postgres (PGlite) in `.data/`, and Yalies and xAI are mocked.
+Postgres (PGlite) in `.data/`, and Yalies and Claude are mocked.
 
 ```bash
 pnpm install
@@ -377,13 +411,13 @@ Jordan is the first path, Priya through Sam the second. Any other NetID in
 onboarding.
 
 For real data, set `MOCK_EXTERNAL=0` and fill in `YALIES_API_KEY` (then run `pnpm sync:directory` once),
-`XAI_API_KEY` and `XAI_MODEL`.
+and `ANTHROPIC_API_KEY` (`CLAUDE_MODEL` defaults to `claude-opus-5-5`).
 
 ### 6.2 The bot
 
 ```bash
 cd messaging
-cp .env.example .env           # add ANTHROPIC_API_KEY; keep DRY_RUN=true until Sendblue is set up
+cp .env.example .env           # add ANTHROPIC_API_KEY; DRY_RUN is true unless you set it to false
 npm install
 npm test
 npm run dev                    # http://localhost:3001
@@ -391,7 +425,11 @@ npm run dev                    # http://localhost:3001
 
 - **Talk to it in a terminal:** `npm run simulate -- +15550000001` (Maya's demo phone).
 - **Talk to it in a browser:** open `http://localhost:3001/?secret=<WEBHOOK_SECRET>`.
-- With `DRY_RUN=true`, outgoing texts are printed instead of sent.
+- With `DRY_RUN=true` (the default), outgoing texts are printed instead of sent.
+- The bot refuses to start with `BACKEND_MODE=mock` and `DRY_RUN=false`, because the mock graph would text
+  the demo numbers for real. For a staged demo on real phones, set `ALLOW_MOCK_LIVE_SENDS=true` and map
+  phones to names with `DEMO_STUDENT_NAMES` and the `DEMO_*_PHONE` variables. No real phone number is kept
+  in the repository.
 - `messaging/README.md` covers Sendblue, the Cloudflare tunnel and the live demo checklist.
 
 ### 6.3 Both together
@@ -456,7 +494,7 @@ crons. On a paid plan you can set it back to every minute.
 
 | Part | Variables |
 |---|---|
-| App | `DATABASE_URL` (Neon), `APP_URL` (the app's https origin; Yale CAS redirects back here), `SESSION_SECRET` (32+ random characters), `BOT_API_SECRET`, `CRON_SECRET`, `BOT_PHONE_DISPLAY`, `ADMIN_NETIDS`, `YALIES_API_KEY`, `XAI_API_KEY`, `XAI_MODEL`, `MOCK_EXTERNAL=0`, `WEBSITE_ORIGIN=https://yalenepo.xyz`, `BOT_WEBHOOK_URL=https://<domain>/bot/webhooks/app`. Leave `DEV_LOGIN_ENABLED` unset. |
+| App | `DATABASE_URL` (Neon), `APP_URL` (the app's https origin; Yale CAS redirects back here), `SESSION_SECRET` (32+ random characters), `BOT_API_SECRET`, `CRON_SECRET`, `BOT_PHONE_DISPLAY`, `ADMIN_NETIDS`, `YALIES_API_KEY`, `ANTHROPIC_API_KEY`, optionally `CLAUDE_MODEL`, `MOCK_EXTERNAL=0`, `WEBSITE_ORIGIN=https://yalenepo.xyz`, `BOT_WEBHOOK_URL=https://<domain>/bot/webhooks/app`. Leave `DEV_LOGIN_ENABLED` unset. With `NODE_ENV=production` the app refuses to run on the example secrets from `.env.example`, on secrets that are too short, or with a non-https `APP_URL`. |
 | Bot | `ANTHROPIC_API_KEY`, `WEBHOOK_SECRET`, `SENDBLUE_API_KEY_ID`, `SENDBLUE_API_SECRET`, `SENDBLUE_FROM_NUMBER`, `DRY_RUN=false`, `PUBLIC_BASE_URL=https://<domain>/bot`, and for the real app: `BACKEND_MODE=http`, `BACKEND_URL=https://<domain>`, `BACKEND_API_SECRET` (= `BOT_API_SECRET`), `SIGNUP_URL=https://<domain>/login`. Optional: `CLAUDE_MODEL`, `CLAUDE_EFFORT`. |
 | Website | `PUBLIC_APP_URL` (the app's origin), optionally `PUBLIC_GRAPH_SHARE_TOKEN`, `PUBLIC_BOT_PHONE`. |
 
@@ -466,15 +504,22 @@ crons. On a paid plan you can set it back to every minute.
 `BACKEND_URL`, `BACKEND_API_SECRET` and a real `SIGNUP_URL`). The function's logs in Vercel name the
 missing variable.
 
-**The bot on Vercel has two limits** (details in `messaging/README.md`):
+**The bot on Vercel** (details in `messaging/README.md`):
 
-- Conversations, pending drafts and the YES/NO window live in memory, which serverless functions don't
-  keep between requests.
-- The Sendblue webhook is answered before the message is processed, and Vercel may stop the function once
-  the response is sent.
+- With `BACKEND_MODE=http`, the bot keeps nothing between texts in its own memory. Each phone's
+  conversation, the draft waiting for "send" and the requests waiting for a YES or NO are saved in the
+  app's database (`bot_state`) after every text and loaded before the next, so any instance can take the
+  next message and a restart loses nothing. A webhook delivered twice is handled once across instances
+  (`bot_claims`). Saved state expires after 24 hours; a conversation idles out after 30 minutes.
+- Webhooks are answered after the work is done (the Sendblue webhook waits up to 25 seconds, the app
+  webhook up to 10), so the function is not stopped mid-message. Give the function a max duration above 25
+  seconds.
+- In `mock` mode there is no app to save to, so state stays in the process. Use mock mode on one
+  long-running machine only.
+- If two texts from the same phone reach two instances at the same moment, the later save wins.
 
-The bot is reliable on a long-running machine (the Mac plus Cloudflare tunnel setup). On Vercel, it needs
-persisted sessions and in-request processing first.
+Run `pnpm db:migrate` against the production database when deploying this version: it adds the
+`bot_state`, `bot_claims` and `rate_limits` tables.
 
 ---
 
@@ -489,7 +534,7 @@ src/
     friends/ memberships/ clubs/ people/
     paths/               findPaths, score (weights), explain (why sentences)
     intros/service.ts    the only writer for intros
-    agents/ xai/ jobs/   Grok agents and prompts, runAgent, the job queue
+    agents/ claude/ jobs/  Claude agents and prompts, runAgent, the job queue
     bot/tools.ts         Bot API request schemas → docs/bot-tools.json
     privacy/             visibility and phone redaction
   components/            UI
@@ -513,10 +558,13 @@ tests/                   app tests (Vitest, in-memory Postgres, no network) and 
 
 ## 9. Known gaps
 
-- **Not yet tried with real credentials:** Yale CAS sign-in, the xAI agents (the app has only run in mock
-  mode), the bot against the deployed app, and `sms:` links on a real iPhone. Yalies has been checked
+- **Not yet tried with real credentials:** Yale CAS sign-in, the Claude research agents (the app has only run
+  in mock mode), the bot against the deployed app, and `sms:` links on a real iPhone. Yalies has been checked
   against the live API.
-- **The bot on Vercel** (section 7): in-memory state and the early webhook response.
+- **The bot on Vercel** (section 7) has not been run there yet. Its state is now saved in the app's
+  database, which has only been exercised locally.
+- **Phone numbers used in an earlier demo are still in git history.** They are gone from the code; removing
+  them from history needs a history rewrite and a force-push.
 - **The bot uses five of the app's bot routes.** Listing intros ("did Jordan reply?") and adding friends by
   text are in the app but not wired into the bot yet.
 - **Differences from the spec:**
@@ -524,7 +572,7 @@ tests/                   app tests (Vitest, in-memory Postgres, no network) and 
   - Yalies paging is 0-based.
   - Two schema columns were added: `path_searches.share_expires_at` and `users.linkedin_job_id`.
   - A few extra endpoints exist (friend suggestions, admin overview, crawl-all, dev login).
-  - The bot runs on Claude rather than Grok.
+  - Every model call uses Claude (Anthropic API) rather than Grok.
   - The "Connect LinkedIn" badge (P2) was not built.
 
 ---
@@ -554,4 +602,5 @@ Luma: https://luma.com/dis51jq2
 - [NEPO bot handoff](https://docs.google.com/document/d/17YLnLekIi-4NvDZzLEvBV5DRbs4_WcV71G8LaDs5AUw/edit) — same note in the shared Drive folder, with the phone map
 - Drive folder: https://drive.google.com/drive/folders/1KoXnodnMgJ77r27w7-A_eiJQwqsbWnNg
 
-**Rule for tonight:** use **only Grok** via `api.x.ai` (no Claude/OpenAI models).
+**Models:** NEPO runs on **Claude** (Anthropic API) throughout. The event's prize rule asked for Grok
+models; the project moved to Claude after the event.

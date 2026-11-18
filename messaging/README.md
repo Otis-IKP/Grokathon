@@ -25,7 +25,7 @@ Both should return `{"ok":true,"backend":"mock","dryRun":false}`. If the second 
 
 Any phone can text the bot, and any club name works. A number that is not already in the seed gets Maya's friends, and a club the bot has not heard of still resolves, with Jordan Hale as the warm path. The accepted or declined text goes back to the phone that asked, even when that phone is sharing Maya's graph.
 
-Tobi, Otis, and Arden are addressed by those names. Jesse is addressed as Jesse when he asks for a club. When he replies YES or NO he is the connector in the story, Jordan Hale. The name map is `DEMO_STUDENT_NAMES` in `src/backend/MockBackend.ts`. Add a teammate there if the bot is using the wrong name.
+Tobi, Otis, and Arden are addressed by those names. Jesse is addressed as Jesse when he asks for a club. When he replies YES or NO he is the connector in the story, Jordan Hale. The name map is the `DEMO_STUDENT_NAMES` variable in `messaging/.env`, written as `phone=FirstName` pairs separated by commas. Add a teammate there if the bot is using the wrong name. The defaults in `src/backend/MockBackend.ts` are fictional 555 numbers; real numbers never go in that file.
 
 The real numbers are in `messaging/.env` on the demo Mac. That file is gitignored. Do not commit it, and do not paste the keys into the public repo.
 
@@ -70,7 +70,7 @@ sendblue webhooks add --type receive "https://NEW_URL/webhooks/sendblue?secret=T
 
 Put that origin in `PUBLIC_BASE_URL` with no trailing slash, and restart `npm run dev` so it reloads `.env`. `tsx watch` does not reload env by itself. Leave cloudflared running. Do not run `sendblue webhooks set-receive`. That command does not exist.
 
-Keys go in `.env`: `ANTHROPIC_API_KEY`, `SENDBLUE_API_KEY_ID`, `SENDBLUE_API_SECRET`. An old `.env` with only `XAI_API_KEY` will not start; add `ANTHROPIC_API_KEY`. Do not commit that file. `DRY_RUN` must stay `false` for real iMessage.
+Keys go in `.env`: `ANTHROPIC_API_KEY`, `SENDBLUE_API_KEY_ID`, `SENDBLUE_API_SECRET`. An old `.env` with only `XAI_API_KEY` will not start; add `ANTHROPIC_API_KEY`. Do not commit that file. `DRY_RUN` defaults to `true`, which only logs texts. For real iMessage set `DRY_RUN=false`. With the mock graph (`BACKEND_MODE=mock`) the bot then refuses to start unless `ALLOW_MOCK_LIVE_SENDS=true` is also set, because the mock graph texts the demo numbers. The stage demo sets all three; a real deploy sets `BACKEND_MODE=http` instead.
 
 ## Setup
 
@@ -82,7 +82,7 @@ npm run typecheck
 npm test
 ```
 
-Put `DRY_RUN=true` in `.env` until Sendblue keys are filled in. The server then logs outbound texts instead of sending them.
+`DRY_RUN` is `true` unless you change it, so the server logs outbound texts instead of sending them. The log shows the last 4 digits of the number, never the whole number.
 
 ```bash
 npm run dev
@@ -113,11 +113,22 @@ when run with `npm run dev`.
 - Set the same variables as `.env` in the Vercel project (`ANTHROPIC_API_KEY`, `WEBHOOK_SECRET`, the Sendblue keys, ...).
 - With `BACKEND_MODE=http`: `BACKEND_URL=https://<domain>`, `BACKEND_API_SECRET` = the app's `BOT_API_SECRET`, `SIGNUP_URL=https://<domain>/login`, and the app's `BOT_WEBHOOK_URL=https://<domain>/bot/webhooks/app`.
 
-Sessions, pending intros, the YES/NO window and the mock graph's intros live in process memory. On Vercel that memory can be
-lost or split between function instances, so a conversation may forget its pending intro, and a connector's YES may go to the
-model instead (they can still answer at the app link in the request). The Sendblue webhook also answers 200 before processing
-the message, and Vercel may stop the function once the response is sent. The Mac plus tunnel setup above has neither problem.
-Persist sessions and process the webhook before responding (or with `waitUntil`) before relying on the hosted bot.
+With `BACKEND_MODE=http`, nothing the bot needs between two texts lives only in the process. Each phone's conversation,
+its pending draft and the requests waiting for its YES or NO are saved through the app (`POST /api/bot/state/put`) after every
+text and loaded before the next (`src/state/store.ts`), so any function instance can take the next message and a restart loses
+nothing. Webhook deliveries are claimed once across instances (`/api/bot/state/claim`). `POST /admin/reset` clears only the
+instance it reaches; texting "reset" clears a phone's saved conversation everywhere.
+
+In `mock` mode there is no app to save to: sessions, the YES/NO window and the mock graph's intros stay in process memory, so
+run mock mode on one long-running machine (the Mac plus tunnel setup above).
+
+Both webhooks answer after the work is done (`/webhooks/sendblue` waits up to 25 seconds, `/webhooks/app` up to 10), so
+Vercel does not freeze the function mid-message. A repeated delivery of the same payload is dropped. The tap-to-send link
+does not depend on memory in http mode: it carries the requester's phone, encrypted with `WEBHOOK_SECRET`, so any instance
+can look the intro up. Changing `WEBHOOK_SECRET` ends links that were already sent.
+
+A deploy that forgets `BACKEND_MODE=http` does not hand strangers the demo graph with live texting: `DRY_RUN` defaults to
+`true`, and mock mode with `DRY_RUN=false` refuses to start unless `ALLOW_MOCK_LIVE_SENDS=true`.
 
 ## Backend contract
 
@@ -136,17 +147,18 @@ phone. `src/backend/HttpBackend.ts` is the client; the app documents the routes 
 | Connector replied YES/NO by text | `POST /api/bot/intros/{id}/respond` |
 | Connector answered in the app | the app posts to this bot's `POST /webhooks/app` (same bearer secret), and the bot texts the requester |
 
-A connector's YES/NO counts only right after the bot texted them the request; the request text also
-carries the app link (`/i/{token}`) so they can answer there instead. The tap-to-send draft link
-(`/d/{introId}`) works only while the intro is a draft and for 24 hours.
+A connector's YES/NO counts only right after the bot texted them a request; the request text also
+carries the app link (`/i/{token}`) so they can answer there instead. If several students asked the same
+connector, a YES or NO answers the oldest request, and the reply says whose it was and who is still waiting.
+The tap-to-send draft link (`/d/{introId}`, plus `?k=` in http mode) works only while the intro is a draft and for 24 hours.
 
 ## Demo checklist
 
-1. `cp .env.example .env`. Add your Anthropic API key. Set `DRY_RUN=true` until step 2 is done.
-2. `npm i -g @sendblue/cli && sendblue setup`, then `sendblue show-keys` and `sendblue lines`. Fill in `SENDBLUE_API_KEY_ID`, `SENDBLUE_API_SECRET`, and `SENDBLUE_FROM_NUMBER`. Set `DRY_RUN=false`.
+1. `cp .env.example .env`. Add your Anthropic API key. Leave `DRY_RUN=true` until step 2 is done.
+2. `npm i -g @sendblue/cli && sendblue setup`, then `sendblue show-keys` and `sendblue lines`. Fill in `SENDBLUE_API_KEY_ID`, `SENDBLUE_API_SECRET`, and `SENDBLUE_FROM_NUMBER`. Set `DRY_RUN=false`, and `ALLOW_MOCK_LIVE_SENDS=true` if this is the mock-graph demo.
 3. Free sandbox limitation: every phone that will text or receive texts must first be added with `sendblue add-contact +1...`, and that person must text the NEPO number once ("hi") before the bot can message them. Do this for the Maya phone and the Jordan phone before the demo.
 4. Set `WEBHOOK_SECRET` to a random string. Start a tunnel (`npx cloudflared tunnel --url http://localhost:3000` or ngrok). Then run `sendblue webhooks add --type receive "https://<tunnel>/webhooks/sendblue?secret=<WEBHOOK_SECRET>"`. Set `PUBLIC_BASE_URL` to the tunnel origin with no trailing slash and restart. If cloudflared restarts, the URL changes and this step has to be repeated. Keep the Mac awake with `caffeinate -dimsu`.
-5. Set `DEMO_MAYA_PHONE` and `DEMO_JORDAN_PHONE` to real team phones, then `npm run dev`.
+5. Set `DEMO_MAYA_PHONE` and `DEMO_JORDAN_PHONE` to real team phones (and `DEMO_STUDENT_NAMES` if the bot should use first names), then `npm run dev`.
 6. Rehearse: "I want to be on YSIG" → "yes" → "send" → Jordan replies "YES" → Maya gets the accepted text. Also test the web chat at `/`.
 
 Seed story, all fictional: Maya Chen (`+15550000001`) asks about YSIG. Jordan Hale (`+15550000002`) is a 1-hop analyst. Priya is not in YSIG and knows board member Sam. In the live mock, Jordan is also a member of every club and Sam is on the board, so a demo ask about any club still has a real connector to text.
@@ -157,13 +169,13 @@ Open this repo in Cursor or Claude and point it at `messaging/`. The model call 
 
 | Change | Where |
 | --- | --- |
-| What the bot says, and whose name it uses | `src/agent/systemPrompt.ts` and `DEMO_STUDENT_NAMES` in `src/backend/MockBackend.ts` |
+| What the bot says, and whose name it uses | `src/agent/systemPrompt.ts` and `DEMO_STUDENT_NAMES` in `messaging/.env` |
 | Which phone is Maya, Jordan, or an extra student | `messaging/.env` on the demo Mac (`DEMO_MAYA_PHONE`, `DEMO_JORDAN_PHONE`, `DEMO_ALSO_PHONES`) |
 | The fictional friends and clubs | `src/backend/seed.ts` |
 | A club the bot has never heard of | `clubFromQuery` in `src/backend/MockBackend.ts` |
-| When "send" is allowed | `send_intro` in `src/agent/tools.ts` |
+| When "send" is allowed | `send_intro` in `src/agent/tools.ts`: the whole message must be a confirmation ("send", "yes", "ok", "go ahead", ...), for the latest draft, within 30 minutes |
 | Where the YES/NO reply is delivered | `requesterPhone` on the intro, set in `save_intro_draft`, read in `answerAsConnector` |
-| When a YES/NO counts as an intro answer | `src/agent/connectorAsks.ts`: only if the last text the bot sent that phone was the intro request |
+| When a YES/NO counts as an intro answer | `src/agent/connectorAsks.ts`: only if the last text the bot sent that phone was an intro request; requests queue per phone, oldest answered first |
 | Otis's real API instead of the mock graph | `BACKEND_MODE=http`, `BACKEND_URL`, `BACKEND_API_SECRET`, `SIGNUP_URL`. The contract is the section above. |
 | Model and thinking depth | `CLAUDE_MODEL`, `CLAUDE_EFFORT` in `.env` |
 

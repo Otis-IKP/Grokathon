@@ -336,7 +336,15 @@ export async function findPaths(db: Db, requesterNetid: string, clubId: string, 
           .select({ netid: memberships.netid, clubId: memberships.clubId, clubName: clubs.name, clubShort: clubs.shortName })
           .from(memberships)
           .innerJoin(clubs, eq(clubs.id, memberships.clubId))
-          .where(and(inArray(memberships.netid, targetNetids), inArray(memberships.clubId, smallIds), verifiedCurrent));
+          .where(
+            and(
+              inArray(memberships.netid, targetNetids),
+              inArray(memberships.clubId, smallIds),
+              verifiedCurrent,
+              // A club an admin hid is never named in a path.
+              ne(clubs.status, "hidden"),
+            ),
+          );
         for (const fc of fClubs) {
           if (!small.has(fc.clubId)) continue;
           const f = friends.get(fc.netid)!;

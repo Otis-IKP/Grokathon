@@ -7,6 +7,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   real,
   text,
   timestamp,
@@ -296,6 +297,38 @@ export const agentRuns = pgTable("agent_runs", {
   citations: jsonb("citations"),
   durationMs: integer("duration_ms"),
   error: text("error"),
+  createdAt: createdAt(),
+});
+
+/**
+ * Request counts per key and time window. Shared by every server instance, so
+ * a limit holds however many serverless functions are running.
+ */
+export const rateLimits = pgTable(
+  "rate_limits",
+  {
+    key: text("key").notNull(),
+    windowStart: ts("window_start").notNull(),
+    hits: integer("hits").notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.key, t.windowStart] })],
+);
+
+/**
+ * The messaging bot's per-phone state (the conversation so far, the draft
+ * waiting for "send", intro requests waiting for a YES or NO), kept here so it
+ * survives restarts and is the same on every bot instance. Keys are
+ * `phone:{E.164}`. Rows expire after `BOT_STATE_TTL_MS` without an update.
+ */
+export const botState = pgTable("bot_state", {
+  key: text("key").primaryKey(),
+  state: jsonb("state").notNull(),
+  updatedAt: updatedAt(),
+});
+
+/** One-time claims, so a webhook delivered twice (to any instance) is handled once. */
+export const botClaims = pgTable("bot_claims", {
+  key: text("key").primaryKey(),
   createdAt: createdAt(),
 });
 

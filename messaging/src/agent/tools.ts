@@ -2,12 +2,28 @@ import { z } from "zod";
 import type Anthropic from "@anthropic-ai/sdk";
 import { getConfig } from "../config";
 import { getBackend } from "../backend/Backend";
-import type { Session } from "./session";
+import type { Intro } from "../types";
+import { clearPendingIntro, type Session } from "./session";
 import { smsLink } from "../util/smsLink";
+import { sealRequesterPhone } from "../util/draftToken";
 import { sendText } from "../transport/sendblue";
 
-const CONFIRM_RE = /^\s*(send|send it|yes|yep|yeah|y|go|do it|ok|okay)\b/i;
+/**
+ * The whole message has to be one of these, optionally followed by "please",
+ * punctuation or emoji. "ok wait don't send yet" or "send it to Priya instead"
+ * is not a confirmation.
+ */
+const CONFIRM_RE =
+  /^\s*(send it|send|yes|yep|yeah|okay|ok|sure|go ahead|do it|looks good)(\s*,?\s*please)?[\s.!,\u2026\u200d\ufe0f\p{Extended_Pictographic}\p{Emoji_Modifier}]*$/iu;
 const NOT_CONFIRMED = "not confirmed: ask the user to reply 'send'";
+const NO_PENDING_DRAFT = "there is no draft waiting to be sent: call save_intro_draft again, show it, and ask the user to reply 'send'";
+const DRAFT_EXPIRED = "that draft is more than 30 minutes old: call save_intro_draft again, show it, and ask the user to reply 'send'";
+/** A saved draft can be confirmed for this long. */
+export const DRAFT_CONFIRM_TTL_MS = 30 * 60 * 1000;
+
+export function isSendConfirmation(text: string): boolean {
+  return CONFIRM_RE.test(text);
+}
 
 export const toolDefinitions: Anthropic.Beta.BetaTool[] = [
   {
@@ -36,7 +52,7 @@ export const toolDefinitions: Anthropic.Beta.BetaTool[] = [
   {
     name: "find_paths",
     description:
-      "Find warm intro paths from the current student to a club id from resolve_club. Do not pass a user id. If paths is empty, emptyReason says why; if pendingResearch is true, more paths may appear in a minute.",
+      "Find warm intro paths from the current student to a club id from resolve_club. Do not pass a user id. targetRole is member, board or alum; alum means a former member, not a current one. If paths is empty, emptyReason says why; if pendingResearch is true, more paths may appear in a minute. Calling this cancels any draft that was waiting to be sent.",
     strict: true,
     input_schema: {
       type: "object",
@@ -63,7 +79,8 @@ export const toolDefinitions: Anthropic.Beta.BetaTool[] = [
   },
   {
     name: "send_intro",
-    description: "Text the pending draft to the connector. Only works after the student explicitly replies \"send\" to that draft.",
+    description:
+      "Text the pending draft to the connector. Only works when the student's whole latest message is a confirmation such as \"send\" or \"yes\", for the latest draft, within 30 minutes of saving it. A result with sent: true means the text went out; never call it again for that intro.",
     strict: true,
     input_schema: {
       type: "object",
@@ -132,6 +149,8 @@ async function runTool(name: ToolName, args: z.infer<(typeof schemas)[ToolName]>
   if (name === "find_paths") {
     const data = args as z.infer<typeof schemas.find_paths>;
     const requester = { id: session.userId, name: session.userName, phone: session.phone, suggestible: true };
+    // A new search means the student moved on: the old draft can no longer be confirmed.
+    clearPendingIntro(session);
     const search = await backend.findPaths(requester, session.phone, data.clubId);
     session.allowedConnectorIds = search.paths.map((path) => path.connector.id);
     session.lastSearch = { searchId: search.searchId, clubId: data.clubId };
@@ -165,8 +184,10 @@ async function runTool(name: ToolName, args: z.infer<(typeof schemas)[ToolName]>
       clubId: data.clubId,
       message: data.message,
     });
+    // Replaces any earlier draft: only this one can be confirmed now.
     session.pendingIntroId = intro.id;
     session.pendingIntroTurn = session.turn;
+    session.pendingIntroAt = Date.now();
     const phone = await backend.getConnectorPhone(intro);
     if (!phone) {
       // Not an error: the draft is saved and the student sends it themselves.
@@ -178,8 +199,13 @@ async function runTool(name: ToolName, args: z.infer<(typeof schemas)[ToolName]>
     }
     const config = getConfig();
     // The raw sms: link carries the connector's phone and can't expire, so it is a mock-only fallback.
+    // In http mode the link also carries the requester's phone, encrypted, so it works on any server instance.
+    const key =
+      config.BACKEND_MODE === "http"
+        ? `?k=${sealRequesterPhone(intro.id, session.phone, config.WEBHOOK_SECRET)}`
+        : "";
     const link = config.PUBLIC_BASE_URL
-      ? `${config.PUBLIC_BASE_URL}/d/${intro.id}`
+      ? `${config.PUBLIC_BASE_URL}/d/${intro.id}${key}`
       : config.BACKEND_MODE === "mock"
         ? smsLink(phone, data.message)
         : undefined;
@@ -187,8 +213,15 @@ async function runTool(name: ToolName, args: z.infer<(typeof schemas)[ToolName]>
   }
 
   const data = args as z.infer<typeof schemas.send_intro>;
+  if (session.sentIntroIds.includes(data.introId)) return { error: "that intro was already sent" };
+  if (!session.pendingIntroId) return { error: NO_PENDING_DRAFT };
+  if (data.introId !== session.pendingIntroId) return { error: NOT_CONFIRMED };
+  if (session.pendingIntroAt !== undefined && Date.now() - session.pendingIntroAt > DRAFT_CONFIRM_TTL_MS) {
+    clearPendingIntro(session);
+    return { error: DRAFT_EXPIRED };
+  }
   const confirmedOnALaterTurn = session.pendingIntroTurn !== undefined && session.turn > session.pendingIntroTurn;
-  if (data.introId !== session.pendingIntroId || !CONFIRM_RE.test(session.latestUserText) || !confirmedOnALaterTurn) {
+  if (!isSendConfirmation(session.latestUserText) || !confirmedOnALaterTurn) {
     return { error: NOT_CONFIRMED };
   }
   const intro = await backend.getIntro(data.introId, session.phone);
@@ -198,11 +231,32 @@ async function runTool(name: ToolName, args: z.infer<(typeof schemas)[ToolName]>
   if (!phone) return { error: "this connector has not linked a phone, so the student has to send it themselves" };
   const answerInApp = intro.responseUrl ? ` Or answer in the NEPO app: ${intro.responseUrl}` : "";
   const content = `${intro.message}\n\n— sent via NEPO for ${session.userName}. Reply YES to accept or NO to pass.${answerInApp}`;
-  await sendText(phone, content, { askIntroId: intro.id });
-  await backend.markIntroSent(intro);
-  session.pendingIntroId = undefined;
-  session.pendingIntroTurn = undefined;
-  return { ok: true, introId: intro.id };
+  await sendText(phone, content, { ask: { introId: intro.id, requesterName: session.userName } });
+
+  // The text is out. From here nothing may lead to a second one, whatever happens to the bookkeeping.
+  session.sentIntroIds.push(intro.id);
+  clearPendingIntro(session);
+  try {
+    await markSentWithOneRetry(intro);
+  } catch {
+    console.error(`intro ${intro.id} was texted but could not be marked sent`);
+    return {
+      ok: true,
+      introId: intro.id,
+      sent: true,
+      note: "The text was sent to the connector. NEPO could not record it as sent, so do not send it again; just tell the student it went out.",
+    };
+  }
+  return { ok: true, introId: intro.id, sent: true };
+}
+
+async function markSentWithOneRetry(intro: Intro): Promise<void> {
+  const backend = getBackend();
+  try {
+    await backend.markIntroSent(intro);
+  } catch {
+    await backend.markIntroSent(intro);
+  }
 }
 
 function parseArgs(raw: unknown): unknown {

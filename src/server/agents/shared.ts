@@ -21,7 +21,8 @@ export function loadPrompt(name: string): string {
 /** Wrap a value in a tag, making sure the value cannot close the tag early. */
 export function tag(name: string, value: string | number | null | undefined): string {
   const text = value === null || value === undefined || value === "" ? "unknown" : String(value);
-  const safe = text.replace(new RegExp(`</?\\s*${name}\\s*>`, "gi"), " ");
+  // Neither this tag nor the outer <source> wrapper can be closed from inside the value.
+  const safe = text.replace(new RegExp(`</?\\s*(?:${name}|source)\\s*>`, "gi"), " ");
   return `<${name}>${safe}</${name}>`;
 }
 

@@ -80,7 +80,7 @@ Paste this into a new chat opened on the repo:
 ```
 You are finishing Yale NEPO with the team. The live demo bot is messaging/, not bot/. Read messaging/README.md and docs/TEAM_HANDOFF.md before you edit.
 
-The bot's model is Claude through the Anthropic API (switched from Grok on Nov 17). The app's research agents still use Grok. Do not commit messaging/.env or print API keys.
+The bot's model is Claude through the Anthropic API (switched from Grok on Nov 17). The app's research agents use Claude too (`src/server/claude/`). Do not commit messaging/.env or print API keys.
 
 The bot already texts, drafts, and sends. Keep that path working. Any phone can ask, any club name should resolve, and the connector's YES or NO must go back to the phone that requested the intro (intro.requesterPhone), not to DEMO_MAYA_PHONE.
 

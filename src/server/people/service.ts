@@ -62,17 +62,18 @@ export async function getPersonCards(db: Db, netids: string[]): Promise<Map<stri
 
 function directoryValues(y: YaliesPerson) {
   return {
-    upi: y.upi,
+    // Privacy rule 2: no email, major or university id is kept for anyone.
+    upi: null,
     firstName: y.first_name ?? y.preferred_name ?? y.netid,
     // preferred_name is only kept when it differs, so search_name stays meaningful.
     preferredName: y.preferred_name && y.preferred_name !== y.first_name ? y.preferred_name : null,
     lastName: y.last_name ?? "",
-    email: y.email,
+    email: null,
     schoolCode: y.school_code,
     school: y.school,
     college: y.college,
     year: y.year,
-    major: y.major,
+    major: null,
     imageUrl: y.image,
     directorySyncedAt: new Date(),
   };

@@ -6,7 +6,7 @@ import type { Db } from "@/server/db/client";
 import { agentRuns, clubs, jobs, people, unmatchedRosterNames } from "@/server/db/schema";
 import { enqueue } from "@/server/jobs/queue";
 import { upsertMembership } from "@/server/memberships/service";
-import { classifySource } from "@/server/xai/evidence";
+import { classifySource } from "@/server/claude/evidence";
 
 export async function listJobs(db: Db, opts: { status?: string; limit?: number } = {}) {
   const counts = await db.select({ status: jobs.status, n: sql<number>`count(*)::int` }).from(jobs).groupBy(jobs.status);

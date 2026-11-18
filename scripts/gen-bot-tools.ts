@@ -3,7 +3,7 @@ import path from "node:path";
 import { botToolDefinitions, botTools } from "@/server/bot/tools";
 
 /**
- * Writes docs/bot-tools.json (xAI function definitions for Tobi's Grok agent)
+ * Writes docs/bot-tools.json (Claude tool definitions for the bot in messaging/)
  * and the Bot API section of docs/api.md. Both come from src/server/bot/tools.ts,
  * the same schemas the route handlers validate with.
  */
@@ -28,8 +28,8 @@ const lines: string[] = [
 ];
 for (const tool of botTools) {
   const def = definitions.find((d) => d.name === tool.name)!;
-  const props = (def.parameters.properties ?? {}) as Record<string, { type?: string; description?: string }>;
-  const required = new Set((def.parameters.required as string[] | undefined) ?? []);
+  const props = (def.input_schema.properties ?? {}) as Record<string, { type?: string; description?: string }>;
+  const required = new Set((def.input_schema.required as string[] | undefined) ?? []);
   lines.push(`### \`${tool.name}\` — \`${tool.method} ${tool.path}\``, "", tool.description, "");
   lines.push("| Argument | Required | Description |", "|---|---|---|");
   for (const [key, prop] of Object.entries(props)) {

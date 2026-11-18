@@ -1,3 +1,3 @@
-from nepo_bot.agent.grok import GrokAgent
+from nepo_bot.agent.claude import ClaudeAgent
 
-__all__ = ["GrokAgent"]
+__all__ = ["ClaudeAgent"]

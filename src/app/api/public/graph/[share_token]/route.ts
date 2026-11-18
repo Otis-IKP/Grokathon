@@ -6,9 +6,12 @@ import { graphForToken } from "@/server/paths/service";
 function cors(req: Request): HeadersInit | undefined {
   const allowed = env().WEBSITE_ORIGIN;
   const origin = req.headers.get("origin");
-  if (!allowed || origin !== allowed) return undefined;
+  if (!allowed || !origin) return undefined;
+  // The site is served on both the bare domain and www.
+  const twin = allowed.includes("://www.") ? allowed.replace("://www.", "://") : allowed.replace("://", "://www.");
+  if (origin !== allowed && origin !== twin) return undefined;
   return {
-    "Access-Control-Allow-Origin": allowed,
+    "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "GET, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
     Vary: "Origin",

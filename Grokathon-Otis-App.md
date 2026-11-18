@@ -1,5 +1,9 @@
 # Yale NEPO — The App (Otis's part)
 
+> **Update:** the app's agents now run on Claude through the Anthropic API (`src/server/claude/`,
+> `ANTHROPIC_API_KEY`, `CLAUDE_MODEL`). Where this spec says Grok, xAI or `XAI_*`, read Claude. The
+> README describes the current behaviour.
+
 Build spec for the NEPO web app and backend. This README is written for the engineer or coding agent who will build it from an empty repository. Read it top to bottom once before writing code; sections 5 to 11 are the reference you will come back to.
 
 ---
