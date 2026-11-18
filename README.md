@@ -79,7 +79,9 @@ friend/like data the API returns. xAI has not been called with a real key yet; s
    Leave `DEV_LOGIN_ENABLED` unset. Optional: `WEBSITE_ORIGIN` (Arden's site, for CORS on the graph
    endpoint) and `BOT_WEBHOOK_URL` (Tobi's endpoint for "your connector replied").
 3. Run `pnpm db:migrate` and `pnpm db:seed` against that database from your machine.
-4. `vercel.json` schedules `/api/internal/jobs/tick` every minute (Vercel sends `CRON_SECRET` as the
+4. `vercel.json` deploys three services in one project: this app (every host, catch-all), the iMessage bot
+   from `messaging/` under `/bot`, and the website from `website/` on the `yalenepo.xyz` hosts. `bot/` is not
+   deployed. It also schedules `/api/internal/jobs/tick` every minute (Vercel sends `CRON_SECRET` as the
    bearer token). Per-minute crons need a paid Vercel plan; on the free plan jobs still run right after
    the request that queued them, and you can hit the tick endpoint from any external cron.
 

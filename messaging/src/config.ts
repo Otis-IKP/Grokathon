@@ -1,22 +1,28 @@
 import { z } from "zod";
 
+const PLACEHOLDER_SIGNUP_URL = "https://example.com/signup";
+
 const envSchema = z
   .object({
-    XAI_API_KEY: z.string().min(1, "XAI_API_KEY is required"),
-    GROK_MODEL: z.string().min(1).default("grok-4.7"),
+    ANTHROPIC_API_KEY: z.string().min(1, "ANTHROPIC_API_KEY is required"),
+    CLAUDE_MODEL: z.string().min(1).default("claude-opus-5-5"),
+    /** Thinking depth. Low keeps text replies quick; raise it if tool use gets sloppy. */
+    CLAUDE_EFFORT: z.enum(["low", "medium", "high", "xhigh", "max"]).default("low"),
     SENDBLUE_API_KEY_ID: z.string().optional().default(""),
     SENDBLUE_API_SECRET: z.string().optional().default(""),
     SENDBLUE_FROM_NUMBER: z.string().optional().default(""),
     WEBHOOK_SECRET: z.string().min(1, "WEBHOOK_SECRET is required"),
     BACKEND_MODE: z.enum(["mock", "http"]).default("mock"),
     BACKEND_URL: z.string().optional().default(""),
-    SIGNUP_URL: z.string().min(1).default("https://example.com/signup"),
+    /** The app's BOT_API_SECRET. Sent on every Bot API call and checked on the app's webhook. */
+    BACKEND_API_SECRET: z.string().optional().default(""),
+    SIGNUP_URL: z.string().min(1).default(PLACEHOLDER_SIGNUP_URL),
     PUBLIC_BASE_URL: z
       .string()
       .optional()
       .default("")
       .transform((value) => value.trim().replace(/\/+$/, "")),
-    PORT: z.coerce.number().int().positive().default(3000),
+    PORT: z.coerce.number().int().positive().default(3001),
     DRY_RUN: z
       .enum(["true", "false"])
       .default("false")
@@ -34,12 +40,23 @@ const envSchema = z
         }
       }
     }
-    if (value.BACKEND_MODE === "http" && !value.BACKEND_URL) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["BACKEND_URL"],
-        message: "BACKEND_URL is required when BACKEND_MODE=http",
-      });
+    if (value.BACKEND_MODE === "http") {
+      const required = [
+        ["BACKEND_URL", value.BACKEND_URL],
+        ["BACKEND_API_SECRET", value.BACKEND_API_SECRET],
+      ] as const;
+      for (const [key, current] of required) {
+        if (!current) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, path: [key], message: `${key} is required when BACKEND_MODE=http` });
+        }
+      }
+      if (value.SIGNUP_URL === PLACEHOLDER_SIGNUP_URL) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["SIGNUP_URL"],
+          message: "SIGNUP_URL must be the NEPO app's sign-in page when BACKEND_MODE=http",
+        });
+      }
     }
   });
 

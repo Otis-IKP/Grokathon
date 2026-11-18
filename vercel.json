@@ -1,3 +1,43 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "app": {
+      "root": ".",
+      "framework": "nextjs"
+    },
+    "messaging": {
+      "root": "messaging",
+      "framework": "express",
+      "entrypoint": "src/index.ts",
+      "functions": {
+        "src/index.ts": { "includeFiles": "public/**" }
+      },
+      "routes": [
+        {
+          "src": "^/bot/?(.*)$",
+          "transforms": [{ "type": "request.path", "op": "set", "args": "/$1" }]
+        }
+      ]
+    },
+    "website": {
+      "root": "website",
+      "framework": "astro"
+    }
+  },
+  "rewrites": [
+    { "source": "/bot", "destination": { "service": "messaging" } },
+    { "source": "/bot/(.*)", "destination": { "service": "messaging" } },
+    {
+      "source": "/(.*)",
+      "has": [{ "type": "host", "value": "yalenepo.xyz" }],
+      "destination": { "service": "website" }
+    },
+    {
+      "source": "/(.*)",
+      "has": [{ "type": "host", "value": "www.yalenepo.xyz" }],
+      "destination": { "service": "website" }
+    },
+    { "source": "/(.*)", "destination": { "service": "app" } }
+  ],
   "crons": [{ "path": "/api/internal/jobs/tick", "schedule": "* * * * *" }]
 }

@@ -15,10 +15,13 @@ export function getBackend(): Backend {
 
 export class BackendError extends Error {
   readonly status: number;
+  /** The app's stable error code (user_not_linked, invalid_state, ...), when it sent one. */
+  readonly code?: string;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, code?: string) {
     super(message);
     this.name = "BackendError";
     this.status = status;
+    this.code = code;
   }
 }

@@ -1,7 +1,6 @@
 import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { loadConfig } from "../src/config";
 import { setBackend } from "../src/backend/Backend";
 import { MockBackend } from "../src/backend/MockBackend";
 import { getSession, resetSessionsForTests } from "../src/agent/session";
@@ -10,18 +9,6 @@ import { createApp } from "../src/app";
 import { resetSendblueForTests } from "../src/transport/sendblue";
 import { loadTestConfig } from "./helpers";
 
-const baseEnv = {
-  XAI_API_KEY: "test-key",
-  GROK_MODEL: "grok-4.7",
-  WEBHOOK_SECRET: "test-secret",
-  BACKEND_MODE: "mock",
-  DRY_RUN: "true",
-  SIGNUP_URL: "https://example.com/signup",
-  PORT: "3000",
-  SENDBLUE_API_KEY_ID: "",
-  SENDBLUE_API_SECRET: "",
-  SENDBLUE_FROM_NUMBER: "+15551110000",
-};
 
 describe("draft link", () => {
   const backend = new MockBackend();
@@ -35,6 +22,7 @@ describe("draft link", () => {
   async function saveDraft() {
     const session = getSession("+15550000001", "maya");
     session.allowedConnectorIds = ["jordan"];
+    session.lastSearch = { searchId: "search_test", clubId: "ysig" };
     session.turn = 1;
     return executeTool(
       "save_intro_draft",
@@ -54,7 +42,7 @@ describe("draft link", () => {
   });
 
   it("returns an https link when PUBLIC_BASE_URL is set", async () => {
-    loadConfig({ ...baseEnv, PUBLIC_BASE_URL: "https://demo.example/" });
+    loadTestConfig({ PUBLIC_BASE_URL: "https://demo.example/" });
     const result = (await saveDraft()) as { introId: string; smsLink: string };
     expect(result.smsLink).toBe(`https://demo.example/d/${result.introId}`);
   });
@@ -63,6 +51,8 @@ describe("draft link", () => {
     loadTestConfig();
     const intro = await backend.createIntro({
       requesterId: "maya",
+      requesterPhone: "+15550000001",
+      searchId: "search_test",
       connectorId: "jordan",
       clubId: "ysig",
       message: "Hey Jordan, coffee?",

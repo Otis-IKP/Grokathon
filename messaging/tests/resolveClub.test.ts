@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { MockBackend } from "../src/backend/MockBackend";
+import { pathsFor } from "./helpers";
 
 describe("resolveClub", () => {
   const backend = new MockBackend();

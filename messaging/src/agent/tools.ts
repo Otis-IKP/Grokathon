@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ChatCompletionTool } from "openai/resources/chat/completions";
+import type Anthropic from "@anthropic-ai/sdk";
 import { getConfig } from "../config";
 import { getBackend } from "../backend/Backend";
 import type { Session } from "./session";
@@ -9,74 +9,67 @@ import { sendText } from "../transport/sendblue";
 const CONFIRM_RE = /^\s*(send|send it|yes|yep|yeah|y|go|do it|ok|okay)\b/i;
 const NOT_CONFIRMED = "not confirmed: ask the user to reply 'send'";
 
-export const toolDefinitions: ChatCompletionTool[] = [
+export const toolDefinitions: Anthropic.Beta.BetaTool[] = [
   {
-    type: "function",
-    function: {
-      name: "resolve_club",
-      description: "Match the student's text to a Yale club.",
-      parameters: {
-        type: "object",
-        additionalProperties: false,
-        properties: { text: { type: "string" } },
-        required: ["text"],
-      },
+    name: "resolve_club",
+    description:
+      "Match the student's text to a Yale club. Call this whenever the student names a club or goal, before find_paths. Pass only the club phrase, e.g. \"YSIG\".",
+    strict: true,
+    input_schema: {
+      type: "object",
+      additionalProperties: false,
+      properties: { text: { type: "string" } },
+      required: ["text"],
     },
   },
   {
-    type: "function",
-    function: {
-      name: "get_club_info",
-      description: "Get the public name, category, and blurb for a club id.",
-      parameters: {
-        type: "object",
-        additionalProperties: false,
-        properties: { clubId: { type: "string" } },
-        required: ["clubId"],
-      },
+    name: "get_club_info",
+    description: "Get the public name, category, and blurb for a club id from resolve_club.",
+    strict: true,
+    input_schema: {
+      type: "object",
+      additionalProperties: false,
+      properties: { clubId: { type: "string" } },
+      required: ["clubId"],
     },
   },
   {
-    type: "function",
-    function: {
-      name: "find_paths",
-      description: "Find warm intro paths from the current student to a club. Do not pass a user id.",
-      parameters: {
-        type: "object",
-        additionalProperties: false,
-        properties: { clubId: { type: "string" } },
-        required: ["clubId"],
-      },
+    name: "find_paths",
+    description:
+      "Find warm intro paths from the current student to a club id from resolve_club. Do not pass a user id. If paths is empty, emptyReason says why; if pendingResearch is true, more paths may appear in a minute.",
+    strict: true,
+    input_schema: {
+      type: "object",
+      additionalProperties: false,
+      properties: { clubId: { type: "string" } },
+      required: ["clubId"],
     },
   },
   {
-    type: "function",
-    function: {
-      name: "save_intro_draft",
-      description: "Save a draft intro to a connector returned by find_paths. Returns an iMessage link the student can tap.",
-      parameters: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          connectorId: { type: "string" },
-          clubId: { type: "string" },
-          message: { type: "string" },
-        },
-        required: ["connectorId", "clubId", "message"],
+    name: "save_intro_draft",
+    description:
+      "Save a draft intro to a connector returned by the latest find_paths for the same club. If canTextConnector is true, you can offer to text it for them. If false, the student has to send it themselves; give them appLink, where the connector can answer.",
+    strict: true,
+    input_schema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        connectorId: { type: "string" },
+        clubId: { type: "string" },
+        message: { type: "string" },
       },
+      required: ["connectorId", "clubId", "message"],
     },
   },
   {
-    type: "function",
-    function: {
-      name: "send_intro",
-      description: "Send the pending draft to the connector. Only works after the student confirms.",
-      parameters: {
-        type: "object",
-        additionalProperties: false,
-        properties: { introId: { type: "string" } },
-        required: ["introId"],
-      },
+    name: "send_intro",
+    description: "Text the pending draft to the connector. Only works after the student explicitly replies \"send\" to that draft.",
+    strict: true,
+    input_schema: {
+      type: "object",
+      additionalProperties: false,
+      properties: { introId: { type: "string" } },
+      required: ["introId"],
     },
   },
 ];
@@ -138,10 +131,12 @@ async function runTool(name: ToolName, args: z.infer<(typeof schemas)[ToolName]>
   }
   if (name === "find_paths") {
     const data = args as z.infer<typeof schemas.find_paths>;
-    const paths = await backend.findPaths(session.userId, data.clubId);
-    session.allowedConnectorIds = paths.map((path) => path.connector.id);
+    const requester = { id: session.userId, name: session.userName, phone: session.phone, suggestible: true };
+    const search = await backend.findPaths(requester, session.phone, data.clubId);
+    session.allowedConnectorIds = search.paths.map((path) => path.connector.id);
+    session.lastSearch = { searchId: search.searchId, clubId: data.clubId };
     return {
-      paths: paths.map((path) => ({
+      paths: search.paths.map((path) => ({
         connectorId: path.connector.id,
         connectorName: path.connector.name,
         hops: path.hops,
@@ -150,27 +145,45 @@ async function runTool(name: ToolName, args: z.infer<(typeof schemas)[ToolName]>
         via: path.via,
         reasons: path.reasons,
       })),
+      ...(search.emptyReason ? { emptyReason: search.emptyReason } : {}),
+      ...(search.pendingResearch ? { pendingResearch: true } : {}),
     };
   }
   if (name === "save_intro_draft") {
     const data = args as z.infer<typeof schemas.save_intro_draft>;
-    if (!session.allowedConnectorIds.includes(data.connectorId)) {
+    if (!session.allowedConnectorIds.includes(data.connectorId) || !session.lastSearch) {
       return { error: "connector was not in the latest path results" };
+    }
+    if (session.lastSearch.clubId !== data.clubId) {
+      return { error: "the latest find_paths was for a different club; call find_paths for this club first" };
     }
     const intro = await backend.createIntro({
       requesterId: session.userId,
       requesterPhone: session.phone,
+      searchId: session.lastSearch.searchId,
       connectorId: data.connectorId,
       clubId: data.clubId,
       message: data.message,
     });
     session.pendingIntroId = intro.id;
     session.pendingIntroTurn = session.turn;
-    const phone = await backend.getUserPhone(data.connectorId);
-    if (!phone) return { error: "connector has no phone on file" };
-    const baseUrl = getConfig().PUBLIC_BASE_URL;
-    const link = baseUrl ? `${baseUrl}/d/${intro.id}` : smsLink(phone, data.message);
-    return { introId: intro.id, smsLink: link };
+    const phone = await backend.getConnectorPhone(intro);
+    if (!phone) {
+      // Not an error: the draft is saved and the student sends it themselves.
+      return {
+        introId: intro.id,
+        canTextConnector: false,
+        ...(intro.responseUrl ? { appLink: intro.responseUrl } : {}),
+      };
+    }
+    const config = getConfig();
+    // The raw sms: link carries the connector's phone and can't expire, so it is a mock-only fallback.
+    const link = config.PUBLIC_BASE_URL
+      ? `${config.PUBLIC_BASE_URL}/d/${intro.id}`
+      : config.BACKEND_MODE === "mock"
+        ? smsLink(phone, data.message)
+        : undefined;
+    return { introId: intro.id, canTextConnector: true, ...(link ? { smsLink: link } : {}) };
   }
 
   const data = args as z.infer<typeof schemas.send_intro>;
@@ -178,14 +191,15 @@ async function runTool(name: ToolName, args: z.infer<(typeof schemas)[ToolName]>
   if (data.introId !== session.pendingIntroId || !CONFIRM_RE.test(session.latestUserText) || !confirmedOnALaterTurn) {
     return { error: NOT_CONFIRMED };
   }
-  const intro = await backend.getIntro(data.introId);
+  const intro = await backend.getIntro(data.introId, session.phone);
   if (!intro) return { error: "intro not found" };
-  const requester = await backend.getUser(intro.requesterId);
-  const phone = await backend.getUserPhone(intro.connectorId);
-  if (!requester || !phone) return { error: "could not address that intro" };
-  const content = `${intro.message}\n\n— sent via NEPO for ${requester.name}. Reply YES to accept or NO to pass.`;
-  await sendText(phone, content);
-  await backend.updateIntroStatus(intro.id, "sent");
+  if (intro.status !== "drafted") return { error: "that intro was already sent" };
+  const phone = await backend.getConnectorPhone(intro);
+  if (!phone) return { error: "this connector has not linked a phone, so the student has to send it themselves" };
+  const answerInApp = intro.responseUrl ? ` Or answer in the NEPO app: ${intro.responseUrl}` : "";
+  const content = `${intro.message}\n\n— sent via NEPO for ${session.userName}. Reply YES to accept or NO to pass.${answerInApp}`;
+  await sendText(phone, content, { askIntroId: intro.id });
+  await backend.markIntroSent(intro);
   session.pendingIntroId = undefined;
   session.pendingIntroTurn = undefined;
   return { ok: true, introId: intro.id };

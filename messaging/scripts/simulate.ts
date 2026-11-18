@@ -11,8 +11,8 @@ dotenv.config();
 process.env.DRY_RUN = "true";
 process.env.BACKEND_MODE = "mock";
 if (!process.env.WEBHOOK_SECRET) process.env.WEBHOOK_SECRET = "simulate-secret";
-if (!process.env.XAI_API_KEY) {
-  console.error("XAI_API_KEY is missing. Add it to messaging/.env from https://console.x.ai");
+if (!process.env.ANTHROPIC_API_KEY) {
+  console.error("ANTHROPIC_API_KEY is missing. Add your key to messaging/.env (https://platform.claude.com).");
   process.exit(1);
 }
 

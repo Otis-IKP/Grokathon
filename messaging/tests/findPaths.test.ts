@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { buildSystemPrompt } from "../src/agent/systemPrompt";
 import { MockBackend } from "../src/backend/MockBackend";
+import { pathsFor } from "./helpers";
 
 describe("findPaths", () => {
   const backend = new MockBackend();
 
   it("ranks Maya's YSIG paths and hides phones, pending friends, and unmatched contacts", async () => {
-    const paths = await backend.findPaths("maya", "ysig");
+    const paths = await pathsFor(backend, "maya", "ysig");
     expect(paths[0]?.connector.name).toBe("Jordan Hale");
     expect(paths[0]?.hops).toBe(1);
     expect(paths[0]?.via).toBe("friend_in_club");
@@ -28,12 +29,12 @@ describe("findPaths", () => {
   });
 
   it("keeps the YPU friend path and also reaches Whiffenpoofs through Jordan", async () => {
-    const ypu = await backend.findPaths("maya", "ypu");
+    const ypu = await pathsFor(backend, "maya", "ypu");
     expect(ypu[0]?.connector.name).toBe("Jordan Hale");
     expect(ypu[0]?.hops).toBe(1);
     expect(ypu.some((path) => path.connector.name === "Chris Park" && path.target?.name === "Taylor Brooks")).toBe(true);
 
-    const whiffs = await backend.findPaths("maya", "whiffs");
+    const whiffs = await pathsFor(backend, "maya", "whiffs");
     expect(whiffs[0]?.connector.name).toBe("Jordan Hale");
     expect(whiffs[0]?.hops).toBe(1);
   });
@@ -45,7 +46,7 @@ describe("findPaths", () => {
     expect(fromDc?.phone).toBe("+15550009101");
     expect(fromRandom?.phone).toBe("+15559999999");
 
-    const paths = await backend.findPaths(fromRandom?.id ?? "", "whiffs");
+    const paths = await pathsFor(backend, fromRandom?.id ?? "", "whiffs");
     expect(paths[0]?.connector.name).toBe("Jordan Hale");
   });
 
@@ -66,7 +67,7 @@ describe("findPaths", () => {
     expect(buildSystemPrompt(otis!)).not.toContain("Maya");
     expect(buildSystemPrompt(arden!)).toContain("The student's name is Arden.");
 
-    const paths = await backend.findPaths(otis?.id ?? "", "ysig");
+    const paths = await pathsFor(backend, otis?.id ?? "", "ysig");
     expect(paths[0]?.connector.name).toBe("Jordan Hale");
   });
 });

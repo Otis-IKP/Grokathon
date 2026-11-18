@@ -39,7 +39,11 @@
         if (!message.trim()) return;
         add("You", message);
         text.value = "";
-        const response = await fetch("/chat", {
+        // Relative to wherever this page is mounted: "/chat" locally, "/bot/chat" on Vercel.
+        // POST /chat needs WEBHOOK_SECRET: open this page as /?secret=... and it is passed along.
+        const secret = new URLSearchParams(location.search).get("secret") || "";
+        const chatUrl = location.pathname.replace(/\/?$/, "/") + "chat?secret=" + encodeURIComponent(secret);
+        const response = await fetch(chatUrl, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ phone: phone.value, text: message }),

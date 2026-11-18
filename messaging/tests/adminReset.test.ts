@@ -30,6 +30,8 @@ describe("POST /admin/reset", () => {
   it("rejects a wrong secret and clears sessions and intros for the right one", async () => {
     const intro = await backend.createIntro({
       requesterId: "maya",
+      requesterPhone: "+15550000001",
+      searchId: "search_test",
       connectorId: "jordan",
       clubId: "ysig",
       message: "Hey Jordan",

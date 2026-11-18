@@ -99,6 +99,23 @@ Web fallback (no iMessage): open `http://localhost:3000/` and use Maya's phone, 
 
 No database account. The mock graph is fictional demo data with `555` numbers.
 
+## On Vercel
+
+The repo-root `vercel.json` deploys this folder as the `messaging` service, public under `/bot` on the
+same domain as the app. Vercel strips the `/bot` prefix before Express sees the request, so the routes in
+`src/app.ts` are unchanged. `src/index.ts` default-exports the app for Vercel and still listens on `PORT`
+when run with `npm run dev`.
+
+- Sendblue webhook: `https://<domain>/bot/webhooks/sendblue?secret=THE_WEBHOOK_SECRET`
+- `PUBLIC_BASE_URL=https://<domain>/bot` (no trailing slash), so draft links become `/bot/d/<introId>`
+- Admin reset: `POST https://<domain>/bot/admin/reset?secret=THE_WEBHOOK_SECRET`
+- Web chat: `https://<domain>/bot/`
+- Set the same variables as `.env` in the Vercel project (`XAI_API_KEY`, `WEBHOOK_SECRET`, the Sendblue keys, ...).
+
+Sessions, pending intros and the mock graph's intros live in process memory. On Vercel that memory can be
+lost or split between function instances, so a conversation may forget its pending intro. The Mac plus
+tunnel setup above has no such problem. Persist sessions before relying on the hosted bot.
+
 ## Backend contract
 
 Base URL is `BACKEND_URL`. Each call times out after 4 seconds. A 404 on a single-resource GET is "not found". Any other non-2xx is an error.

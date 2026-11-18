@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { getConfig } from "../config";
 import { normalizePhone } from "../util/phone";
+import { clearConnectorAsk, recordConnectorAsk, resetConnectorAsksForTests } from "../agent/connectorAsks";
 
 const SEND_GAP_MS = 1100;
 
@@ -32,13 +33,20 @@ export function resetSendblueForTests(): void {
   observer = null;
   webhookTail = Promise.resolve();
   seenWebhookKeys.clear();
+  resetConnectorAsksForTests();
 }
 
 export function webhookDrained(): Promise<void> {
   return webhookTail;
 }
 
-export async function sendText(to: string, content: string): Promise<void> {
+/**
+ * Queue a text. Pass `askIntroId` when the text is an intro request to a
+ * connector; any other text to that phone ends the window for a YES/NO answer.
+ */
+export async function sendText(to: string, content: string, options: { askIntroId?: string } = {}): Promise<void> {
+  if (options.askIntroId) recordConnectorAsk(to, options.askIntroId);
+  else clearConnectorAsk(to);
   const run = chain.then(async () => {
     const config = getConfig();
     if (!config.DRY_RUN && lastSentAt > 0) {

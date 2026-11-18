@@ -21,6 +21,8 @@ describe("send_intro confirmation gate", () => {
     session.allowedConnectorIds = ["jordan"];
     const intro = await backend.createIntro({
       requesterId: "maya",
+      requesterPhone: "+15550000001",
+      searchId: "search_test",
       connectorId: "jordan",
       clubId: "ysig",
       message: "Hey Jordan, want to grab coffee about YSIG?",

@@ -1,43 +1,49 @@
 import "dotenv/config";
+import Anthropic from "@anthropic-ai/sdk";
 import { loadConfig, type Config } from "./config";
 import { createApp } from "./app";
 
 const invokedDirectly = process.argv[1]?.includes("index.ts") || process.argv[1]?.includes("index.js");
 
+const config = loadConfigOrExit();
+const app = createApp();
+
+// Vercel imports this module and serves the default export as one function.
+// Locally (`npm run dev` / `npm start`) the module is run directly and listens on PORT.
+export default app;
+
 if (invokedDirectly) {
-  start().catch((error: unknown) => {
+  void checkModel(config).finally(() => {
+    app.listen(config.PORT, () => {
+      console.log(`NEPO listening on ${config.PORT} (backend=${config.BACKEND_MODE}, dryRun=${config.DRY_RUN})`);
+    });
+  });
+}
+
+function loadConfigOrExit(): Config {
+  try {
+    return loadConfig();
+  } catch (error) {
+    if (!invokedDirectly) throw error;
     console.error(error instanceof Error ? error.message : error);
     process.exit(1);
-  });
+  }
 }
 
-async function start(): Promise<void> {
-  const config = loadConfig();
-  await logAvailableModels(config);
-  const app = createApp();
-  app.listen(config.PORT, () => {
-    console.log(`NEPO listening on ${config.PORT} (backend=${config.BACKEND_MODE}, dryRun=${config.DRY_RUN})`);
-  });
-}
-
-async function logAvailableModels(config: Config): Promise<void> {
+/** Confirm the key works and the model exists, so a typo shows up at startup rather than on the first text. */
+async function checkModel(config: Config): Promise<void> {
+  const client = new Anthropic({ apiKey: config.ANTHROPIC_API_KEY, timeout: 8000, maxRetries: 0 });
   try {
-    const response = await fetch("https://api.x.ai/v1/models", {
-      headers: { Authorization: `Bearer ${config.XAI_API_KEY}` },
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!response.ok) {
-      console.warn(`Could not list models (HTTP ${response.status}). Continuing with ${config.GROK_MODEL}.`);
-      return;
-    }
-    const body = (await response.json()) as { data?: Array<{ id?: string }> };
-    const ids = (body.data ?? []).map((model) => model.id).filter((id): id is string => Boolean(id));
-    console.log(`Available models: ${ids.join(", ") || "(none listed)"}`);
-    if (!ids.includes(config.GROK_MODEL)) {
-      console.warn(`GROK_MODEL=${config.GROK_MODEL} is not in the model list.`);
-    }
+    const model = await client.models.retrieve(config.CLAUDE_MODEL);
+    console.log(`Using ${model.display_name} (${model.id}), effort ${config.CLAUDE_EFFORT}.`);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "request failed";
-    console.warn(`Could not list models: ${message}. Continuing with ${config.GROK_MODEL}.`);
+    if (error instanceof Anthropic.AuthenticationError) {
+      console.warn("ANTHROPIC_API_KEY was rejected. Every text will fail until it is fixed.");
+    } else if (error instanceof Anthropic.NotFoundError) {
+      console.warn(`CLAUDE_MODEL=${config.CLAUDE_MODEL} was not found.`);
+    } else {
+      const message = error instanceof Error ? error.message : "request failed";
+      console.warn(`Could not check the model: ${message}. Continuing with ${config.CLAUDE_MODEL}.`);
+    }
   }
 }

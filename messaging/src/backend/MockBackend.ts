@@ -6,11 +6,15 @@ import type {
   Contact,
   Friendship,
   Intro,
+  IntroAnswer,
+  LinkResult,
   Membership,
   PathResult,
+  PathSearch,
   Role,
   User,
 } from "../types";
+import { IntroAlreadyAnsweredError } from "../types";
 import { BackendError } from "./Backend";
 import { buildSeed } from "./seed";
 import { normalizePhone } from "../util/phone";
@@ -119,10 +123,6 @@ export class MockBackend implements Backend {
     return this.users;
   }
 
-  async getUserPhone(id: string): Promise<string | null> {
-    return (await this.getUser(id))?.phone ?? null;
-  }
-
   async getClub(clubId: string): Promise<Club | null> {
     return this.clubs.find((club) => club.id === clubId) ?? null;
   }
@@ -173,7 +173,11 @@ export class MockBackend implements Backend {
     return hits.slice(0, 3).map(({ club, confidence }) => ({ club, confidence }));
   }
 
-  async findPaths(userId: string, clubId: string): Promise<PathResult[]> {
+  async findPaths(requester: User, _requesterPhone: string, clubId: string): Promise<PathSearch> {
+    return { searchId: `search_${randomUUID()}`, paths: await this.rankPaths(requester.id, clubId) };
+  }
+
+  private async rankPaths(userId: string, clubId: string): Promise<PathResult[]> {
     const requester = await this.getUser(userId);
     if (!requester) return [];
     const members = new Map<string, Role>();
@@ -251,10 +255,23 @@ export class MockBackend implements Backend {
     return [...bestByConnector.values()].sort((a, b) => b.score - a.score).slice(0, 5);
   }
 
-  async createIntro(input: Omit<Intro, "id" | "status" | "createdAt">): Promise<Intro> {
+  async createIntro(input: {
+    requesterId: string;
+    requesterPhone?: string;
+    searchId?: string;
+    connectorId: string;
+    clubId: string;
+    message: string;
+  }): Promise<Intro> {
+    const connector = await this.getUser(input.connectorId);
     const intro: Intro = {
-      ...input,
       id: `intro_${randomUUID()}`,
+      requesterId: input.requesterId,
+      requesterPhone: input.requesterPhone,
+      connectorId: input.connectorId,
+      connectorName: connector?.name,
+      clubId: input.clubId,
+      message: input.message,
       status: "drafted",
       createdAt: Date.now(),
     };
@@ -262,29 +279,45 @@ export class MockBackend implements Backend {
     return intro;
   }
 
-  async updateIntroStatus(id: string, status: Intro["status"]): Promise<Intro> {
-    const intro = this.intros.get(id);
-    if (!intro) throw new BackendError(404, `Intro ${id} was not found`);
-    intro.status = status;
-    return intro;
-  }
-
   async getIntro(id: string): Promise<Intro | null> {
     return this.intros.get(id) ?? null;
+  }
+
+  /** Every seeded connector has a phone, so the demo can always text them. */
+  async getConnectorPhone(intro: Intro): Promise<string | null> {
+    return (await this.getUser(intro.connectorId))?.phone ?? null;
+  }
+
+  async markIntroSent(intro: Intro): Promise<void> {
+    const stored = this.intros.get(intro.id);
+    if (!stored) throw new BackendError(404, `Intro ${intro.id} was not found`);
+    if (stored.status === "drafted") stored.status = "sent";
+  }
+
+  async answerIntro(introId: string, _connectorPhone: string, decision: "accept" | "decline"): Promise<IntroAnswer> {
+    const intro = this.intros.get(introId);
+    if (!intro) throw new BackendError(404, `Intro ${introId} was not found`);
+    if (intro.status !== "sent") throw new IntroAlreadyAnsweredError();
+    intro.status = decision === "accept" ? "accepted" : "declined";
+    const requester = await this.getUser(intro.requesterId);
+    const connector = await this.getUser(intro.connectorId);
+    const club = await this.getClub(intro.clubId);
+    return {
+      requesterPhone: intro.requesterPhone ?? requester?.phone ?? null,
+      requesterName: requester?.name ?? "them",
+      connectorName: connector?.name ?? "Your friend",
+      clubName: club?.name ?? "the club",
+    };
+  }
+
+  /** Mock users can't link a phone: every phone already plays a demo student. */
+  async linkPhone(): Promise<LinkResult> {
+    return { ok: false, reason: "invalid_code" };
   }
 
   /** Drops drafted and sent intros so the stage demo can start over. */
   resetIntros(): void {
     this.intros.clear();
-  }
-
-  async findLatestSentIntroByConnector(connectorId: string): Promise<Intro | null> {
-    let latest: Intro | null = null;
-    for (const intro of this.intros.values()) {
-      if (intro.connectorId !== connectorId || intro.status !== "sent") continue;
-      if (!latest || intro.createdAt > latest.createdAt) latest = intro;
-    }
-    return latest;
   }
 
   /** Jordan is the 1-hop friend and Sam is the board member, for every club. */

@@ -3,10 +3,10 @@ import type { Server } from "node:http";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../src/app";
 import { MockBackend } from "../src/backend/MockBackend";
-import { setGrokClientForTests } from "../src/agent/handleMessage";
+import { setClaudeClientForTests } from "../src/agent/handleMessage";
 import { resetSessionsForTests } from "../src/agent/session";
 import { resetSendblueForTests, setOutboundObserver, webhookDrained } from "../src/transport/sendblue";
-import { loadTestConfig } from "./helpers";
+import { claudeText, fakeClaude, loadTestConfig } from "./helpers";
 
 describe("sendblue webhook", () => {
   let server: Server;
@@ -21,13 +21,7 @@ describe("sendblue webhook", () => {
     setOutboundObserver((_to, content) => {
       sent.push(content);
     });
-    setGrokClientForTests({
-      chat: {
-        completions: {
-          create: async () => ({ choices: [{ message: { content: "Hey Jordan" } }] }),
-        },
-      },
-    });
+    setClaudeClientForTests(fakeClaude(() => claudeText("Hey Jordan")).client);
     const app = createApp({ backend: new MockBackend() });
     server = app.listen(0);
     await new Promise<void>((resolve) => server.once("listening", resolve));
@@ -35,7 +29,7 @@ describe("sendblue webhook", () => {
   });
 
   afterEach(async () => {
-    setGrokClientForTests(null);
+    setClaudeClientForTests(null);
     await new Promise<void>((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()));
     });

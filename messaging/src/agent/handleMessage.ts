@@ -1,52 +1,54 @@
-import OpenAI from "openai";
-import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
+import Anthropic from "@anthropic-ai/sdk";
 import { getConfig } from "../config";
 import { getBackend } from "../backend/Backend";
 import { MockBackend } from "../backend/MockBackend";
+import { IntroAlreadyAnsweredError } from "../types";
 import { phoneLast4, normalizePhone } from "../util/phone";
 import { sendText } from "../transport/sendblue";
 import { buildSystemPrompt } from "./systemPrompt";
-import { clearSession, getSession, trimHistory, type Session } from "./session";
+import { clearSession, getSession, trimHistory, type HistoryMessage, type Session } from "./session";
+import { clearConnectorAsk, pendingConnectorAsk } from "./connectorAsks";
 import { executeTool, toolDefinitions } from "./tools";
 
 const MAX_MODEL_CALLS = 6;
+const MAX_TOKENS = 16000;
 const TANGLED = "Sorry, I got tangled up. Can you rephrase?";
 const SNAG = "NEPO hit a snag on my end. Try again in a sec.";
+const DECLINED = "I can't help with that one. Want to find a warm intro to a club instead?";
 const RESET_RE = /^\s*(reset|start over)\s*[.!]?\s*$/i;
 const ACCEPT_RE = /^\s*(yes|yep|yeah|y|ok|okay)\s*[.!]?\s*$/i;
 const DECLINE_RE = /^\s*(no thanks|nope|nah|no)\s*[.!]?\s*$/i;
+const CODE_RE = /^\s*(\d{6})\s*$/;
 
-type GrokClient = {
-  chat: {
-    completions: {
-      create: (body: {
-        model: string;
-        messages: ChatCompletionMessageParam[];
-        tools: typeof toolDefinitions;
-        tool_choice: "auto";
-      }) => Promise<{
-        choices: Array<{
-          message: {
-            content?: string | null;
-            tool_calls?: Array<{
-              id: string;
-              type: "function";
-              function: { name: string; arguments: string };
-            }>;
-          };
-        }>;
-      }>;
-    };
-  };
+/**
+ * Betas this request uses:
+ * - server-side-fallback: if Claude's safety classifiers decline, the API reruns
+ *   the request on Anthropic's recommended fallback model instead of refusing.
+ * - thinking-binding-controls: trimHistory cuts old turns, so thinking blocks
+ *   that no longer match their conversation are dropped instead of rejected.
+ */
+const BETAS: Anthropic.Beta.AnthropicBeta[] = ["server-side-fallback-2026-07-01", "thinking-binding-controls-2026-08-01"];
+/** Models that accept `fallbacks: "default"`. Others (e.g. Haiku) run without it. */
+const DEFAULT_FALLBACK_MODELS = new Set([
+  "claude-opus-5-5",
+  "claude-opus-5",
+  "claude-fable-5-2",
+  "claude-fable-5-1",
+  "claude-sonnet-5-5",
+]);
+
+type CreateParams = Anthropic.Beta.MessageCreateParamsNonStreaming;
+export type ClaudeClient = {
+  beta: { messages: { create: (body: CreateParams) => Promise<Anthropic.Beta.BetaMessage> } };
 };
 
 const locks = new Map<string, Promise<void>>();
-let grokOverride: GrokClient | null = null;
-let grokCached: OpenAI | null = null;
+let clientOverride: ClaudeClient | null = null;
+let clientCached: Anthropic | null = null;
 
-export function setGrokClientForTests(client: GrokClient | null): void {
-  grokOverride = client;
-  grokCached = null;
+export function setClaudeClientForTests(client: ClaudeClient | null): void {
+  clientOverride = client;
+  clientCached = null;
 }
 
 export async function handleMessage(phone: string, text: string): Promise<string[]> {
@@ -68,26 +70,22 @@ export async function handleMessage(phone: string, text: string): Promise<string
 }
 
 async function handleLocked(phone: string, text: string): Promise<string[]> {
-  const backend = getBackend();
-  const direct = await backend.getUserByPhone(phone);
-  if (direct) {
-    const connectorReply = await maybeHandleConnectorReply(direct.id, direct.name, text);
-    if (connectorReply) return connectorReply;
-  }
+  const askedIntroId = pendingConnectorAsk(phone);
+  const decision = ACCEPT_RE.test(text) ? "accept" : DECLINE_RE.test(text) ? "decline" : null;
+  if (askedIntroId && decision) return answerAsConnector(askedIntroId, phone, decision);
+  // Anything else from this phone ends the window for a YES/NO answer; the bot is about to reply.
+  clearConnectorAsk(phone);
 
-  const user = backend instanceof MockBackend ? backend.ensureStudent(phone) : direct;
-  if (!user) {
-    return [
-      `Hey! I'm NEPO. I help you get warm intros to Yale clubs through people you already know. Sign up here first: ${getConfig().SIGNUP_URL}`,
-    ];
-  }
+  const backend = getBackend();
+  const user = backend instanceof MockBackend ? backend.ensureStudent(phone) : await backend.getUserByPhone(phone);
+  if (!user) return handleUnlinkedPhone(phone, text);
 
   if (RESET_RE.test(text)) {
     clearSession(phone);
     return ["Fresh start. What club are you aiming for?"];
   }
 
-  const session = getSession(phone, user.id);
+  const session = getSession(phone, user.id, user.name);
   session.latestUserText = text;
   session.history.push({ role: "user", content: text });
   session.turn += 1;
@@ -98,79 +96,107 @@ async function handleLocked(phone: string, text: string): Promise<string[]> {
   return bubbles;
 }
 
-async function maybeHandleConnectorReply(userId: string, connectorName: string, text: string): Promise<string[] | null> {
-  const accepted = ACCEPT_RE.test(text);
-  const declined = DECLINE_RE.test(text);
-  if (!accepted && !declined) return null;
-  const backend = getBackend();
-  const intro = await backend.findLatestSentIntroByConnector(userId);
-  if (!intro) return null;
-  const requester = await backend.getUser(intro.requesterId);
-  const club = await backend.getClub(intro.clubId);
-  const requesterPhone = intro.requesterPhone ?? (await backend.getUserPhone(intro.requesterId));
-  if (!requester || !club || !requesterPhone) return null;
-  if (accepted) {
-    await backend.updateIntroStatus(intro.id, "accepted");
-    await sendText(
-      requesterPhone,
-      `${connectorName} accepted your intro request for ${club.name}! They'll reach out.`,
-    );
-  } else {
-    await backend.updateIntroStatus(intro.id, "declined");
-    await sendText(
-      requesterPhone,
-      `${connectorName} can't make the intro right now. Want me to try your next-best path?`,
-    );
+async function answerAsConnector(introId: string, phone: string, decision: "accept" | "decline"): Promise<string[]> {
+  clearConnectorAsk(phone);
+  let answer;
+  try {
+    answer = await getBackend().answerIntro(introId, phone, decision);
+  } catch (error) {
+    if (error instanceof IntroAlreadyAnsweredError) return ["Looks like you already answered that one. Thanks!"];
+    throw error;
   }
-  return [`Thanks, I've let ${requester.name} know.`];
+  if (answer.requesterPhone) {
+    const notice =
+      decision === "accept"
+        ? `${answer.connectorName} accepted your intro request for ${answer.clubName}! They'll reach out.`
+        : `${answer.connectorName} can't make the intro right now. Want me to try your next-best path?`;
+    await sendText(answer.requesterPhone, notice);
+  }
+  return [`Thanks, I've let ${answer.requesterName} know.`];
+}
+
+/** A phone with no NEPO account: link it with the app's 6-digit code, or point them to sign up. */
+async function handleUnlinkedPhone(phone: string, text: string): Promise<string[]> {
+  const signup = getConfig().SIGNUP_URL;
+  const code = text.match(CODE_RE)?.[1];
+  if (code) {
+    const result = await getBackend().linkPhone(phone, code);
+    if (result.ok) {
+      const first = result.user.name.split(" ")[0] || "there";
+      return [`You're linked, ${first}! What club are you aiming for?`];
+    }
+    return result.reason === "code_expired"
+      ? ["That code has expired. Get a fresh one in the NEPO app and text it to me."]
+      : ["That code didn't work. Get a fresh one in the NEPO app and text it to me."];
+  }
+  return [
+    `Hey! I'm NEPO. I help you get warm intros to Yale clubs through people you already know. Sign up here first: ${signup}`,
+    "Then text me the 6-digit code the app shows you to link this phone.",
+  ];
 }
 
 async function runModel(session: Session, name: string, college?: string): Promise<string[]> {
   const config = getConfig();
-  const client = getGrokClient();
-  const messages: ChatCompletionMessageParam[] = [
-    { role: "system", content: buildSystemPrompt({ id: session.userId, name, phone: "", suggestible: true, college }) },
-    ...session.history,
-  ];
+  const client = getClaudeClient();
+  const system = buildSystemPrompt({ id: session.userId, name, phone: "", suggestible: true, college });
 
   for (let call = 0; call < MAX_MODEL_CALLS; call += 1) {
-    const response = await client.chat.completions.create({
-      model: config.GROK_MODEL,
-      messages,
+    const response = await client.beta.messages.create({
+      model: config.CLAUDE_MODEL,
+      max_tokens: MAX_TOKENS,
+      betas: BETAS,
+      ...(DEFAULT_FALLBACK_MODELS.has(config.CLAUDE_MODEL) ? { fallbacks: "default" as const } : {}),
+      thinking: { type: "adaptive", block_binding: { prefix_mismatch_behavior: "drop_block" } },
+      output_config: { effort: config.CLAUDE_EFFORT },
+      system,
       tools: toolDefinitions,
-      tool_choice: "auto",
+      messages: session.history,
     });
-    const message = response.choices[0]?.message;
-    if (!message) return [TANGLED];
-    const toolCalls = message.tool_calls ?? [];
-    if (toolCalls.length === 0) {
-      const text = message.content ?? "";
+
+    if (response.stop_reason === "refusal") return [DECLINED];
+    if (response.stop_reason === "max_tokens") return [TANGLED];
+
+    const content = echoableContent(response.content);
+    const toolUses = content.filter((block): block is Anthropic.Beta.BetaToolUseBlock => block.type === "tool_use");
+    session.history.push({ role: "assistant", content: content as Anthropic.Beta.BetaContentBlockParam[] });
+
+    if (toolUses.length === 0) {
+      const text = content
+        .filter((block): block is Anthropic.Beta.BetaTextBlock => block.type === "text")
+        .map((block) => block.text)
+        .join("\n\n");
       const bubbles = toBubbles(text);
-      session.history.push({ role: "assistant", content: bubbles.join("\n\n") });
       return bubbles.length > 0 ? bubbles : [TANGLED];
     }
 
-    const assistantMessage: ChatCompletionMessageParam = {
-      role: "assistant",
-      content: message.content ?? null,
-      tool_calls: toolCalls,
-    };
-    messages.push(assistantMessage);
-    session.history.push(assistantMessage);
-
-    for (const toolCall of toolCalls) {
-      const result = await executeTool(toolCall.function.name, toolCall.function.arguments, session);
-      const toolMessage: ChatCompletionMessageParam = {
-        role: "tool",
-        tool_call_id: toolCall.id,
+    // All results go back in one user message, as the API expects for parallel tool calls.
+    const results: Anthropic.Beta.BetaToolResultBlockParam[] = [];
+    for (const toolUse of toolUses) {
+      const result = await executeTool(toolUse.name, toolUse.input, session);
+      const failed = typeof result === "object" && result !== null && "error" in result;
+      results.push({
+        type: "tool_result",
+        tool_use_id: toolUse.id,
         content: JSON.stringify(result),
-      };
-      messages.push(toolMessage);
-      session.history.push(toolMessage);
+        ...(failed ? { is_error: true } : {}),
+      });
     }
+    session.history.push({ role: "user", content: results } satisfies HistoryMessage);
   }
 
   return [TANGLED];
+}
+
+/**
+ * After a fallback, thinking and tool_use blocks that come before the last
+ * `fallback` block belong to the model that declined: they are not echoed back
+ * and their tool calls are not run. The `fallback` block itself stays in place.
+ */
+export function echoableContent(content: Anthropic.Beta.BetaContentBlock[]): Anthropic.Beta.BetaContentBlock[] {
+  const boundary = content.map((block) => block.type).lastIndexOf("fallback");
+  if (boundary <= 0) return content;
+  const dropped = new Set(["thinking", "redacted_thinking", "tool_use"]);
+  return content.filter((block, index) => index >= boundary || !dropped.has(block.type));
 }
 
 export function toBubbles(raw: string): string[] {
@@ -190,13 +216,12 @@ export function toBubbles(raw: string): string[] {
   return [parts[0]!, parts[1]!, parts.slice(2).join("\n")];
 }
 
-function getGrokClient(): GrokClient {
-  if (grokOverride) return grokOverride;
-  if (!grokCached) {
-    const config = getConfig();
-    grokCached = new OpenAI({ apiKey: config.XAI_API_KEY, baseURL: "https://api.x.ai/v1" });
+function getClaudeClient(): ClaudeClient {
+  if (clientOverride) return clientOverride;
+  if (!clientCached) {
+    clientCached = new Anthropic({ apiKey: getConfig().ANTHROPIC_API_KEY, timeout: 60_000, maxRetries: 2 });
   }
-  return grokCached as unknown as GrokClient;
+  return clientCached as unknown as ClaudeClient;
 }
 
 function withPhoneLock<T>(phone: string, fn: () => Promise<T>): Promise<T> {

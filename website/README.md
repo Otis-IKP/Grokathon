@@ -40,12 +40,17 @@ quietly keeps the sample graph.
 
 ## Deploy on Vercel with yalenepo.xyz
 
-1. In Vercel, choose **Add New → Project** and import `Otis-IKP/Grokathon`.
-2. Set **Root Directory** to `website`. Vercel detects Astro and fills in `npm run build` and `dist`.
-3. Add any environment variables from the table above, then deploy.
-4. Under **Settings → Domains**, add `yalenepo.xyz` and `www.yalenepo.xyz`, and choose to redirect `www`
-   to the apex.
-5. At your domain registrar, create the DNS records Vercel shows on that page. Usually that is an `A` record
+The site is the `website` service in the repo-root `vercel.json`, deployed in the same Vercel project as the
+app and the bot. Requests whose host is `yalenepo.xyz` or `www.yalenepo.xyz` go to this site; every other host
+goes to the app (and `/bot/*` on any host goes to the bot).
+
+1. In Vercel, choose **Add New → Project** and import `Otis-IKP/Grokathon`. Leave **Root Directory** at the
+   repo root; `vercel.json` defines the services.
+2. Add any environment variables from the table above, then deploy. `PUBLIC_APP_URL` is the app's own domain,
+   not `yalenepo.xyz`.
+3. Under **Settings → Domains**, add `yalenepo.xyz` and `www.yalenepo.xyz` (plus the app's domain), and choose
+   to redirect `www` to the apex.
+4. At your domain registrar, create the DNS records Vercel shows on that page. Usually that is an `A` record
    for `yalenepo.xyz` pointing to `76.76.21.21`, and a `CNAME` for `www` pointing to `cname.vercel-dns.com`.
    Alternatively, switch the domain's nameservers to Vercel's. HTTPS certificates are issued automatically
    once DNS resolves.
