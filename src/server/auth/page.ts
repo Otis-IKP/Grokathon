@@ -1,5 +1,6 @@
 import "server-only";
 import { redirect } from "next/navigation";
+import { connection } from "next/server";
 import { getDb, type Db } from "@/server/db/client";
 import { getCurrentUser, type CurrentUser } from "./guards";
 
@@ -8,6 +9,9 @@ import { getCurrentUser, type CurrentUser } from "./guards";
  * to /login that comes back to `next` afterwards.
  */
 export async function pageUser(next: string): Promise<{ db: Db; me: CurrentUser }> {
+  // Every signed-in page is per-request. Without this, `next build` tries to
+  // prerender them and opens the database at build time.
+  await connection();
   const db = getDb();
   const me = await getCurrentUser(db);
   if (!me) redirect(`/login?next=${encodeURIComponent(next)}`);
