@@ -102,7 +102,11 @@ function wideSvg(requester: GraphNode, club: GraphNode, rows: PathRow[], label: 
       d.tag((colX[1] + colX[2]) / 2, y - 8, "friends");
       d.curve(colX[2] + half, y, colX[3] - half + 6, midY, r.clubEdge);
     } else {
-      d.curve(colX[1] + half, y, colX[3] - half + 6, midY, r.clubEdge);
+      // Stay on this row past the middle column, so the line never crosses another path's node.
+      const x1 = colX[1] + half;
+      const x2 = colX[2] + half;
+      const x3 = colX[3] - half + 6;
+      d.path(`M${x1} ${y} H${x2} C ${(x2 + x3) / 2} ${y}, ${(x2 + x3) / 2} ${midY}, ${x3} ${midY}`, r.clubEdge);
     }
   });
   d.node(colX[0], midY, requester.label, "requester", "you");
@@ -146,9 +150,9 @@ function compactSvg(requester: GraphNode, club: GraphNode, rows: PathRow[], labe
   d.node(colX[0], top, requester.label, "requester", "you");
   rows.forEach((r, i) => {
     const y = rowY(i);
-    d.node(colX[0], y, r.connector.label, "connector", "friend");
+    d.node(colX[0], y, r.connector.label, "connector", connectorSub(r));
     if (r.target) d.node(colX[1], y, r.target.label, "target", targetSub(r));
-    d.node(colX[2], y, club.label, "club", r.clubEdge === "board" ? "via board" : "member");
+    d.node(colX[2], y, club.label, "club", "club");
   });
   return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${label}" class="graph-svg graph-compact">${d.parts.join("")}</svg>`;
 }
