@@ -1,0 +1,48 @@
+---
+/** A small rounded photo frame with a credit line. */
+interface Props {
+  src: string;
+  alt: string;
+  credit: string;
+  creditHref: string;
+  width: number;
+  height: number;
+  class?: string;
+  priority?: boolean;
+}
+const { src, alt, credit, creditHref, width, height, class: className, priority = false } = Astro.props;
+---
+
+<figure class:list={["photo", className]}>
+  <img
+    src={src}
+    alt={alt}
+    width={width}
+    height={height}
+    loading={priority ? "eager" : "lazy"}
+    decoding="async"
+    fetchpriority={priority ? "high" : "auto"}
+  />
+  <figcaption><a href={creditHref} rel="noopener">{credit}</a></figcaption>
+</figure>
+
+<style>
+  .photo {
+    margin: 0;
+  }
+  img {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+    border-radius: var(--radius-md);
+    box-shadow: 0 1px 2px rgba(16, 32, 56, 0.08), 0 12px 32px -18px rgba(16, 32, 56, 0.35);
+  }
+  figcaption {
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  figcaption a {
+    color: inherit;
+  }
+</style>

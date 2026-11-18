@@ -10,6 +10,10 @@ const eslintConfig = defineConfig([
     // Default ignores of eslint-config-next:
     ".next/**",
     ".next-e2e/**",
+    // Separate projects with their own tooling.
+    "website/**",
+    "messaging/**",
+    "bot/**",
     "out/**",
     "build/**",
     "next-env.d.ts",

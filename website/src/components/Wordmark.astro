@@ -1,0 +1,61 @@
+---
+/**
+ * "Yale" plus "NEPO", with a line through the middle of NEPO. The strike is the joke:
+ * this is about warm intros, not nepotism.
+ */
+interface Props {
+  tone?: "dark" | "light";
+  size?: "md" | "lg";
+}
+const { tone = "dark", size = "md" } = Astro.props;
+---
+
+<span class:list={["wordmark", `tone-${tone}`, `size-${size}`]} aria-label="Yale NEPO" role="img">
+  <span class="yale" aria-hidden="true">Yale</span>
+  <span class="nepo" aria-hidden="true">NEPO</span>
+</span>
+
+<style>
+  .wordmark {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.32em;
+    line-height: 1;
+    white-space: nowrap;
+  }
+  .yale {
+    font-family: var(--serif);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .nepo {
+    position: relative;
+    font-family: var(--sans);
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    font-size: 0.86em;
+  }
+  .nepo::after {
+    content: "";
+    position: absolute;
+    left: -0.08em;
+    right: -0.02em;
+    top: 50%;
+    height: 0.11em;
+    transform: translateY(-40%);
+    background: currentColor;
+    border-radius: 1px;
+  }
+  .size-md {
+    font-size: 22px;
+  }
+  .size-lg {
+    font-size: 30px;
+  }
+  .tone-dark {
+    color: var(--yale);
+  }
+  .tone-light {
+    color: #fff;
+  }
+</style>

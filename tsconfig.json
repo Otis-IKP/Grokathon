@@ -39,6 +39,9 @@
   "exclude": [
     "node_modules",
     ".next-e2e",
-    ".next-build"
+    ".next-build",
+    "website",
+    "messaging",
+    "bot"
   ]
 }

@@ -1,0 +1,291 @@
+---
+import Base from "../layouts/Base.astro";
+import Graph from "../components/Graph.astro";
+import Photo from "../components/Photo.astro";
+import { appPrivacyUrl, botPhone, loginUrl, smsHref } from "../lib/config";
+
+const flow = [
+  {
+    you: "I want to be on YSIG",
+    nepo: "Jordan is your friend and a YSIG analyst (confirmed on the club’s site). Want me to draft a note to him?",
+  },
+  { you: "yes", nepo: "Here’s a draft. Tap to open it in Messages, or reply “send”." },
+  { you: "send", nepo: "Sent. I’ll tell you when Jordan answers." },
+];
+
+const sources = [
+  {
+    title: "What students tell NEPO",
+    body: "Clubs you add yourself, or read from your LinkedIn: paste your profile link, or upload the PDF LinkedIn makes of your own profile. These show as “Self-reported” until a public source confirms them.",
+  },
+  {
+    title: "Public club pages",
+    body: "Grok reads clubs’ own board and members pages, Yale Connect pages that are public, and campus news such as the Yale Daily News.",
+  },
+  {
+    title: "Checked against the source",
+    body: "Each membership carries a badge: Verified when the club, Yale or campus news names the student; Likely for weaker public evidence; Self-reported otherwise. Every check keeps the link it came from.",
+  },
+];
+
+const privacy = [
+  ["Yale only", "Everything past the welcome pages needs a Yale NetID sign-in."],
+  ["Your friend list is yours", "Only you can see who you’ve added. A friend-of-a-friend path is shown only to that friend’s own friends, and only if they allow it."],
+  ["Nobody is contacted for you", "NEPO drafts; you decide whether anything is sent. Students who haven’t signed up are never texted or emailed."],
+  ["No is easy", "Saying no to an intro takes one tap and needs no reason. The person asking sees “not right now.”"],
+  ["Public sources only", "NEPO never logs in to LinkedIn or reads pages behind a login. A club membership without a public source is not kept for someone who hasn’t signed up."],
+  ["Leave whenever you like", "Sign in and choose “Hide me from NEPO” to disappear from search and suggestions, or delete your account."],
+];
+---
+
+<Base
+  title="How it works · Yale NEPO"
+  description="What a student does, how NEPO finds a warm path into a club, where club data comes from, and what stays private."
+>
+  <section class="wrap narrow intro">
+    <p class="eyebrow">How it works</p>
+    <h1>A warm intro, in a few texts</h1>
+    <p class="lede">
+      Most clubs are easier to join when someone inside knows you. NEPO finds that someone among the people you
+      already know, and helps you ask.
+    </p>
+  </section>
+
+  <section class="wrap narrow section">
+    <h2 class="section-title">What you do</h2>
+    <p class="lede">
+      Text <a href={smsHref}>{botPhone}</a> from your phone. A conversation looks like this:
+    </p>
+    <ol class="chat" aria-label="Example conversation with NEPO">
+      {
+        flow.map((turn) => (
+          <li>
+            <p class="bubble you">
+              <span class="sr-only">You: </span>
+              {turn.you}
+            </p>
+            <p class="bubble nepo">
+              <span class="sr-only">NEPO: </span>
+              {turn.nepo}
+            </p>
+          </li>
+        ))
+      }
+    </ol>
+    <p class="note">
+      The first time, NEPO asks you to sign in with your NetID, add a few friends from the Yale directory, and link
+      your phone by texting it a code. {loginUrl && <a href={loginUrl}>Sign in now</a>}
+    </p>
+  </section>
+
+  <section class="wrap section">
+    <div class="narrow">
+      <h2 class="section-title">How NEPO picks who to ask</h2>
+      <p class="lede">
+        Here Maya wants to join YSIG. Jordan, her friend, is in it. Priya, another friend, isn’t, but she’s friends
+        with Sam, the president. NEPO ranks Jordan first because he’s one step away, then Priya.
+      </p>
+    </div>
+    <div class="graph-row">
+      <Graph />
+    </div>
+    <ul class="rank-notes narrow">
+      <li>A friend who is in the club beats a friend of a friend. A board member beats a general member.</li>
+      <li>Someone you’ve added but who hasn’t added you back can be asked directly, never used as a bridge.</li>
+      <li>People who are busy with other requests, or who said no to you for this club recently, drop down or out.</li>
+      <li>Each suggestion comes with a plain sentence saying why, so you know what to say.</li>
+    </ul>
+  </section>
+
+  <section class="wrap section">
+    <div class="split">
+      <div>
+        <h2 class="section-title">Where club data comes from</h2>
+        <div class="sources">
+          {
+            sources.map((s) => (
+              <div class="source">
+                <h3>{s.title}</h3>
+                <p>{s.body}</p>
+              </div>
+            ))
+          }
+        </div>
+      </div>
+      <Photo
+        class="side-photo"
+        src="/images/yale-branford.jpg"
+        alt="Painted postcard of Branford Court with Harkness Tower rising behind it"
+        width={1200}
+        height={722}
+        credit="Branford Court and Harkness Tower. Tichnor Brothers, Boston Public Library"
+        creditHref="https://commons.wikimedia.org/wiki/File:Branford_Court_and_Harkness_Tower,_Yale_University,_New_Haven,_Conn_(61775).jpg"
+      />
+    </div>
+  </section>
+
+  <section class="wrap section" id="privacy">
+    <div class="narrow">
+      <h2 class="section-title">What stays private</h2>
+      <p class="lede">NEPO knows who knows whom, so it is careful about who sees it.</p>
+    </div>
+    <dl class="privacy">
+      {
+        privacy.map(([title, body]) => (
+          <div>
+            <dt>{title}</dt>
+            <dd>{body}</dd>
+          </div>
+        ))
+      }
+    </dl>
+    {
+      appPrivacyUrl && (
+        <p class="note narrow">
+          <a href={appPrivacyUrl}>What NEPO knows about you and how to remove yourself</a>
+        </p>
+      )
+    }
+  </section>
+
+  <section class="wrap narrow section cta">
+    <h2 class="section-title">Ready to try it?</h2>
+    <p class="lede">Text the club you want to NEPO.</p>
+    <div class="cta-actions">
+      <a class="btn btn-primary" href={smsHref}>Text NEPO</a>
+      {loginUrl && <a class="btn btn-outline" href={loginUrl}>Sign in with Yale</a>}
+    </div>
+  </section>
+</Base>
+
+<style>
+  .intro {
+    padding-top: 32px;
+  }
+  .intro h1 {
+    margin-top: 12px;
+    font-size: clamp(34px, 5vw, 50px);
+  }
+  .intro .lede {
+    margin-top: 16px;
+  }
+  .chat {
+    list-style: none;
+    margin: 24px 0 0;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+  }
+  .chat li {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .bubble {
+    max-width: 82%;
+    padding: 10px 14px;
+    border-radius: 20px;
+    font-size: 16px;
+    line-height: 1.45;
+  }
+  .you {
+    align-self: flex-end;
+    background: var(--yale);
+    color: #fff;
+    border-bottom-right-radius: 6px;
+  }
+  .nepo {
+    align-self: flex-start;
+    background: #eef1f5;
+    color: var(--ink);
+    border-bottom-left-radius: 6px;
+  }
+  .note {
+    margin-top: 16px;
+    font-size: 15px;
+    color: var(--muted);
+  }
+  .graph-row {
+    margin-top: 28px;
+  }
+  .rank-notes {
+    margin: 24px 0 0;
+    padding-left: 20px;
+    color: var(--muted);
+  }
+  .rank-notes li + li {
+    margin-top: 8px;
+  }
+  .split {
+    display: grid;
+    gap: 32px;
+  }
+  @media (min-width: 860px) {
+    .split {
+      grid-template-columns: 1.3fr 1fr;
+      align-items: start;
+    }
+    .split :global(.side-photo) {
+      margin-top: 56px;
+    }
+  }
+  .split :global(.side-photo) {
+    max-width: 420px;
+  }
+  .sources {
+    display: grid;
+    gap: 14px;
+    margin-top: 20px;
+  }
+  .source {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 20px 22px;
+  }
+  .source h3 {
+    font-size: 19px;
+  }
+  .source p {
+    margin-top: 6px;
+    color: var(--muted);
+  }
+  .privacy {
+    margin: 24px 0 0;
+    display: grid;
+    gap: 14px;
+  }
+  @media (min-width: 760px) {
+    .privacy {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+  .privacy div {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 20px 22px;
+  }
+  .privacy dt {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: 19px;
+  }
+  .privacy dd {
+    margin: 6px 0 0;
+    color: var(--muted);
+  }
+  .cta {
+    text-align: left;
+  }
+  .cta-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 20px;
+  }
+</style>

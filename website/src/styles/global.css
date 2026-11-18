@@ -1,0 +1,171 @@
+:root {
+  --yale: #00356b;
+  --yale-deep: #002a55;
+  --yale-soft: #e8eef6;
+  --yale-line: #c9d6e6;
+  --ink: #14202e;
+  --muted: #5a6778;
+  --page: #f7f8fa;
+  --card: #ffffff;
+  --border: #e3e7ed;
+  --gold: #b8892d;
+  --radius-lg: 28px;
+  --radius-md: 18px;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color-scheme: light;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 17px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+a {
+  color: var(--yale);
+  text-underline-offset: 3px;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--serif);
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+  margin: 0;
+}
+
+p {
+  margin: 0;
+  text-wrap: pretty;
+}
+
+.wrap {
+  width: 100%;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+.narrow {
+  max-width: 720px;
+}
+
+:focus-visible {
+  outline: 3px solid #6b9bd1;
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 22px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 16px;
+  text-decoration: none;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.btn-light {
+  background: #fff;
+  color: var(--yale);
+}
+.btn-light:hover {
+  background: var(--yale-soft);
+}
+
+.btn-ghost {
+  color: #fff;
+  border: 1.5px solid rgba(255, 255, 255, 0.45);
+}
+.btn-ghost:hover {
+  border-color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.btn-primary {
+  background: var(--yale);
+  color: #fff;
+}
+.btn-primary:hover {
+  background: var(--yale-deep);
+}
+
+.btn-outline {
+  color: var(--yale);
+  border: 1.5px solid var(--yale-line);
+  background: #fff;
+}
+.btn-outline:hover {
+  border-color: var(--yale);
+}
+
+.eyebrow {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Vertical only, so it keeps .wrap's side gutters when both classes are used. */
+.section {
+  padding-block: 56px;
+}
+
+.section-title {
+  font-size: clamp(28px, 4vw, 36px);
+  margin-bottom: 12px;
+}
+
+.lede {
+  color: var(--muted);
+  font-size: 18px;
+  max-width: 60ch;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
+}

@@ -1,0 +1,190 @@
+---
+import Wordmark from "../components/Wordmark.astro";
+import { appPrivacyUrl, loginUrl } from "../lib/config";
+import "../styles/global.css";
+
+interface Props {
+  title: string;
+  description: string;
+}
+const { title, description } = Astro.props;
+const path = Astro.url.pathname.replace(/\/$/, "") || "/";
+const canonical = new URL(Astro.url.pathname, Astro.site);
+const ogImage = new URL("/images/yale-harkness.jpg", Astro.site);
+const nav = [
+  { href: "/", label: "Home" },
+  { href: "/how", label: "How it works" },
+];
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="theme-color" content="#00356b" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Yale NEPO" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={ogImage} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="generator" content={Astro.generator} />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="site-header">
+      <div class="wrap header-row">
+        <a href="/" class="home-link" aria-label="Yale NEPO home"><Wordmark /></a>
+        <nav aria-label="Main">
+          <ul>
+            {
+              nav.map((item) => (
+                <li>
+                  <a href={item.href} aria-current={path === item.href ? "page" : undefined}>
+                    {item.label}
+                  </a>
+                </li>
+              ))
+            }
+            {
+              loginUrl && (
+                <li>
+                  <a href={loginUrl} class="signin">
+                    Sign in
+                  </a>
+                </li>
+              )
+            }
+          </ul>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main">
+      <slot />
+    </main>
+
+    <footer class="site-footer">
+      <div class="wrap footer-grid">
+        <div>
+          <Wordmark size="md" />
+          <p class="foot-note">
+            A student project from the Yale Grokathon, November 2026. Not affiliated with or endorsed by Yale
+            University. Built on Grok.
+          </p>
+        </div>
+        <div class="foot-links">
+          <a href="/how#privacy">Privacy</a>
+          {appPrivacyUrl && <a href={appPrivacyUrl}>What NEPO knows and how to remove yourself</a>}
+          <span class="credits">
+            Photos: Harkness Tower by Carol M. Highsmith, Library of Congress. Branford Court and Harkness Tower,
+            Tichnor Brothers postcard, Boston Public Library. Both public domain, via Wikimedia Commons.
+          </span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>
+
+<style>
+  .skip {
+    position: absolute;
+    left: 12px;
+    top: -60px;
+    z-index: 10;
+    background: var(--yale);
+    color: #fff;
+    padding: 10px 14px;
+    border-radius: 10px;
+  }
+  .skip:focus {
+    top: 12px;
+  }
+  .site-header {
+    background: var(--page);
+  }
+  .header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    min-height: 72px;
+  }
+  .home-link {
+    display: inline-flex;
+    min-height: 44px;
+    align-items: center;
+    text-decoration: none;
+  }
+  nav ul {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  nav a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0 12px;
+    border-radius: 999px;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--muted);
+    text-decoration: none;
+  }
+  nav a:hover {
+    color: var(--yale);
+  }
+  nav a[aria-current="page"] {
+    color: var(--yale);
+    background: var(--yale-soft);
+  }
+  nav .signin {
+    color: var(--yale);
+    border: 1.5px solid var(--yale-line);
+    margin-left: 4px;
+  }
+  @media (max-width: 420px) {
+    nav a {
+      padding: 0 9px;
+      font-size: 14px;
+    }
+  }
+  .site-footer {
+    margin-top: 40px;
+    border-top: 1px solid var(--border);
+    padding: 36px 0 48px;
+    font-size: 14px;
+    color: var(--muted);
+  }
+  .footer-grid {
+    display: grid;
+    gap: 24px;
+  }
+  @media (min-width: 760px) {
+    .footer-grid {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+  .foot-note {
+    margin-top: 12px;
+    max-width: 44ch;
+  }
+  .foot-links {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .credits {
+    font-size: 12px;
+  }
+</style>

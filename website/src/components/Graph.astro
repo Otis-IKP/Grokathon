@@ -1,0 +1,141 @@
+---
+import { graphShareToken, appUrl } from "../lib/config";
+import { demoGraph } from "../lib/demo-graph";
+import { describePaths, renderGraphSvg } from "../lib/graph";
+
+/**
+ * The Maya → YSIG sample, drawn at build time. When PUBLIC_APP_URL and PUBLIC_GRAPH_SHARE_TOKEN
+ * are both set, the browser swaps in that real path from the app's public graph endpoint.
+ */
+const svg = renderGraphSvg(demoGraph);
+const sentences = describePaths(demoGraph);
+const liveUrl = appUrl && graphShareToken ? `${appUrl}/api/public/graph/${encodeURIComponent(graphShareToken)}` : "";
+---
+
+<figure class="graph" data-live-url={liveUrl}>
+  <div class="graph-canvas" data-graph-canvas set:html={svg} />
+  <figcaption>
+    <span data-graph-source>Sample path. Maya, Jordan, Priya and Sam are made-up students.</span>
+    <ul class="graph-list" data-graph-list>
+      {sentences.map((s) => <li>{s}</li>)}
+    </ul>
+  </figcaption>
+</figure>
+
+<script>
+  import { describePaths, isGraph, renderGraphSvg } from "../lib/graph";
+
+  for (const figure of document.querySelectorAll<HTMLElement>("figure.graph[data-live-url]")) {
+    const url = figure.dataset.liveUrl;
+    if (!url) continue;
+    fetch(url, { headers: { Accept: "application/json" } })
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error(String(res.status)))))
+      .then((graph: unknown) => {
+        if (!isGraph(graph)) return;
+        const canvas = figure.querySelector<HTMLElement>("[data-graph-canvas]");
+        const list = figure.querySelector<HTMLElement>("[data-graph-list]");
+        const source = figure.querySelector<HTMLElement>("[data-graph-source]");
+        if (canvas) canvas.innerHTML = renderGraphSvg(graph);
+        if (list) {
+          list.replaceChildren(
+            ...describePaths(graph).map((s) => {
+              const li = document.createElement("li");
+              li.textContent = s;
+              return li;
+            }),
+          );
+        }
+        if (source) source.textContent = "A real path from NEPO, shown with first names and last initials only.";
+      })
+      .catch(() => {
+        // An expired or missing share token keeps the sample on screen.
+      });
+  }
+</script>
+
+<style>
+  .graph {
+    margin: 0;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 20px 16px 18px;
+  }
+  .graph-canvas :global(.graph-svg) {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+  /* One layout at a time; display:none also hides the other from screen readers. */
+  .graph-canvas :global(.graph-wide) {
+    display: none;
+  }
+  @media (min-width: 620px) {
+    .graph-canvas :global(.graph-wide) {
+      display: block;
+    }
+    .graph-canvas :global(.graph-compact) {
+      display: none;
+    }
+  }
+  .graph-canvas :global(.edge) {
+    fill: none;
+    stroke: var(--yale-line);
+    stroke-width: 2.5;
+  }
+  .graph-canvas :global(.edge-member) {
+    stroke: var(--yale);
+    stroke-width: 2.5;
+  }
+  .graph-canvas :global(.edge-board) {
+    stroke: var(--gold);
+    stroke-width: 3.5;
+  }
+  .graph-canvas :global(.edge-tag) {
+    font: 600 11px var(--sans);
+    fill: var(--muted);
+  }
+  .graph-canvas :global(.node rect) {
+    fill: #fff;
+    stroke: var(--yale-line);
+    stroke-width: 1.5;
+  }
+  .graph-canvas :global(.node-label) {
+    font: 600 14px var(--sans);
+    fill: var(--ink);
+  }
+  .graph-canvas :global(.node-sub) {
+    font: 500 10.5px var(--sans);
+    fill: var(--muted);
+    letter-spacing: 0.02em;
+  }
+  .graph-canvas :global(.node-requester rect),
+  .graph-canvas :global(.node-club rect) {
+    fill: var(--yale);
+    stroke: var(--yale);
+  }
+  .graph-canvas :global(.node-requester .node-label),
+  .graph-canvas :global(.node-club .node-label) {
+    fill: #fff;
+  }
+  .graph-canvas :global(.node-requester .node-sub),
+  .graph-canvas :global(.node-club .node-sub) {
+    fill: rgba(255, 255, 255, 0.75);
+  }
+  .graph-canvas :global(.node-target rect) {
+    stroke: var(--gold);
+  }
+  figcaption {
+    margin-top: 14px;
+    font-size: 14px;
+    color: var(--muted);
+  }
+  .graph-list {
+    margin: 8px 0 0;
+    padding-left: 18px;
+    color: var(--ink);
+  }
+  .graph-list li + li {
+    margin-top: 4px;
+  }
+</style>

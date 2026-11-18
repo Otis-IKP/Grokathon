@@ -1,0 +1,29 @@
+---
+/**
+ * A small serif "Y" for the corner of the navy panel. It is drawn as type, not Yale's official
+ * logo artwork, so the site does not present itself as an official Yale page.
+ */
+---
+
+<span class="ymark" aria-hidden="true">Y</span>
+
+<style>
+  .ymark {
+    position: absolute;
+    right: 22px;
+    bottom: 18px;
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    border: 1.5px solid rgba(255, 255, 255, 0.28);
+    color: rgba(255, 255, 255, 0.85);
+    font-family: var(--serif);
+    font-weight: 700;
+    font-size: 28px;
+    line-height: 1;
+    padding-top: 2px;
+    user-select: none;
+  }
+</style>
