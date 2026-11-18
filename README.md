@@ -4,6 +4,10 @@ A student texts NEPO: *"I want to be on YSIG."* NEPO works out which of their fr
 introduce them to someone in that club, drafts the ask, sends it when they say so, and tells them when the
 friend answers.
 
+## Demo
+
+▶️ [Watch the demo video](docs/yale-nepo-demo.mp4)
+
 This repository holds all three parts of NEPO:
 
 | Part | Folder | What it is | Owner |
