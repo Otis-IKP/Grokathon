@@ -95,6 +95,7 @@ parse, authorise and call them.
 | Piece | How it works |
 |---|---|
 | **Sign-in** | Yale CAS (`secure.its.yale.edu/cas`). The NetID only ever comes from CAS's `serviceValidate` response, and the session is an encrypted cookie (iron-session). For local work, `DEV_LOGIN_ENABLED=1` adds a "sign in as NetID" box; it is always off in production. |
+| **Demo sign-in** | For a deployed demo, where CAS is not available until Yale ITS registers the app's callback URL. Setting `DEMO_LOGIN_CODE` (8+ characters) adds a "Demo sign-in" box to the login page. With that code a visitor can sign in as one of the seeded demo students (`demo_maya`, `demo_jordan`, `demo_priya`) and as nobody else; real NetIDs stay behind CAS. Attempts are rate-limited. Unset the variable to switch it off. |
 | **Profile** | On first sign-in, the person's name, college, class year and photo come from the [Yalies](https://yalies.io) directory API. The client drops the phone, address, birthday and friend data Yalies returns before anything is stored. |
 | **Phone linking** | `POST /api/me/phone-code` creates a single-use 6-digit code that lasts 10 minutes. Texting it to the NEPO number makes the bot call `POST /api/bot/link-phone`. Texting from the number proves you own it, and a phone belongs to one account at a time. |
 
@@ -494,7 +495,7 @@ crons. On a paid plan you can set it back to every minute.
 
 | Part | Variables |
 |---|---|
-| App | `DATABASE_URL` (Neon), `APP_URL` (the app's https origin; Yale CAS redirects back here), `SESSION_SECRET` (32+ random characters), `BOT_API_SECRET`, `CRON_SECRET`, `BOT_PHONE_DISPLAY`, `ADMIN_NETIDS`, `YALIES_API_KEY`, `ANTHROPIC_API_KEY`, optionally `CLAUDE_MODEL`, `MOCK_EXTERNAL=0`, `WEBSITE_ORIGIN=https://yalenepo.xyz`, `BOT_WEBHOOK_URL=https://<domain>/bot/webhooks/app`. Leave `DEV_LOGIN_ENABLED` unset. With `NODE_ENV=production` the app refuses to run on the example secrets from `.env.example`, on secrets that are too short, or with a non-https `APP_URL`. |
+| App | `DATABASE_URL` (Neon), `APP_URL` (the app's https origin; Yale CAS redirects back here), `SESSION_SECRET` (32+ random characters), `BOT_API_SECRET`, `CRON_SECRET`, `BOT_PHONE_DISPLAY`, `ADMIN_NETIDS`, `YALIES_API_KEY`, `ANTHROPIC_API_KEY`, optionally `CLAUDE_MODEL`, `MOCK_EXTERNAL=0`, `WEBSITE_ORIGIN=https://yalenepo.xyz`, `BOT_WEBHOOK_URL=https://<domain>/bot/webhooks/app`. Leave `DEV_LOGIN_ENABLED` unset. For a demo without CAS, set `DEMO_LOGIN_CODE` and run `pnpm db:seed` against the database (section 2.1). With `NODE_ENV=production` the app refuses to run on the example secrets from `.env.example`, on secrets that are too short, or with a non-https `APP_URL`. |
 | Bot | `ANTHROPIC_API_KEY`, `WEBHOOK_SECRET`, `SENDBLUE_API_KEY_ID`, `SENDBLUE_API_SECRET`, `SENDBLUE_FROM_NUMBER`, `DRY_RUN=false`, `PUBLIC_BASE_URL=https://<domain>/bot`, and for the real app: `BACKEND_MODE=http`, `BACKEND_URL=https://<domain>`, `BACKEND_API_SECRET` (= `BOT_API_SECRET`), `SIGNUP_URL=https://<domain>/login`. Optional: `CLAUDE_MODEL`, `CLAUDE_EFFORT`. |
 | Website | `PUBLIC_APP_URL` (the app's origin), optionally `PUBLIC_GRAPH_SHARE_TOKEN`, `PUBLIC_BOT_PHONE`. |
 

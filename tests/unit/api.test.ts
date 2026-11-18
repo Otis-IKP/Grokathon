@@ -53,6 +53,7 @@ import * as botLinkPhone from "@/app/api/bot/link-phone/route";
 import * as botResolveClub from "@/app/api/bot/resolve-club/route";
 import * as botWhoami from "@/app/api/bot/whoami/route";
 import * as adminJobs from "@/app/api/admin/jobs/route";
+import * as demoLogin from "@/app/api/auth/demo-login/route";
 import * as devLogin from "@/app/api/auth/dev-login/route";
 import * as directorySearch from "@/app/api/directory/search/route";
 import * as friendAccept from "@/app/api/friends/[id]/accept/route";
@@ -146,6 +147,43 @@ describe("conventions (section 9.1)", () => {
     const ok = await call(tick.POST as Handler, { method: "POST", headers: { authorization: "Bearer test-cron-secret" } });
     expect(ok.status).toBe(200);
     expect(ok.body).toMatchObject({ ran: expect.any(Number) });
+  });
+
+  test("demo sign-in: off without a code, needs the right code, and only ever signs in a seeded demo account", async () => {
+    const attempt = (b: Record<string, string>) => call(demoLogin.POST as Handler, { body: b });
+    expect((await attempt({ netid: "demo_maya", code: "whatever" })).body.error.code).toBe("demo_login_disabled");
+
+    vi.stubEnv("DEMO_LOGIN_CODE", "show-me-nepo");
+    // Also in production, where dev login is always refused.
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("APP_URL", "https://nepo.example.com");
+    vi.stubEnv("BOT_API_SECRET", "a-long-random-bot-secret");
+    vi.stubEnv("CRON_SECRET", "a-long-random-cron-secret");
+    try {
+      expect((await attempt({ netid: "demo_maya", code: "wrong-code" })).status).toBe(403);
+      expect(session.current.userId).toBeUndefined();
+
+      // A real (non-demo) person cannot be reached with the code, whether or not they have an account.
+      await db.insert(people).values({ netid: "real1", firstName: "Rea", lastName: "Person" }).onConflictDoNothing();
+      await db.insert(users).values({ netid: "real1" }).onConflictDoNothing();
+      for (const netid of ["real1", "nobody99", "admin1"]) {
+        expect((await attempt({ netid, code: "show-me-nepo" })).status).toBe(403);
+      }
+      expect(session.current.userId).toBeUndefined();
+
+      const ok = await attempt({ netid: "demo_maya", code: "show-me-nepo", next: "/clubs" });
+      expect([ok.status, ok.body.redirect]).toEqual([200, "/clubs"]);
+      expect(session.current.netid).toBe("demo_maya");
+      expect((await call(devLogin.POST as Handler, { body: { netid: "demo_maya" } })).status).toBe(403);
+
+      // Guesses are capped.
+      session.current = {};
+      const statuses = [];
+      for (let i = 0; i < 9; i++) statuses.push((await attempt({ netid: "demo_maya", code: `guess-${i}` })).status);
+      expect(statuses.at(-1)).toBe(429);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   test("the dev task endpoint and dev login are refused in production", async () => {

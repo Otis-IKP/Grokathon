@@ -34,6 +34,7 @@ export const ERROR_CODES = {
   share_expired: 404,
   cas_failed: 401,
   dev_login_disabled: 403,
+  demo_login_disabled: 403,
 } as const;
 
 export type ErrorCode = keyof typeof ERROR_CODES;

@@ -53,7 +53,7 @@ function bearer(req: Request): string | null {
   return match ? match[1].trim() : null;
 }
 
-function constantTimeEquals(a: string, b: string): boolean {
+export function constantTimeEquals(a: string, b: string): boolean {
   const ab = Buffer.from(a);
   const bb = Buffer.from(b);
   if (ab.length !== bb.length) {

@@ -7,6 +7,8 @@ import { safeNext } from "@/server/auth/cas";
 import { getCurrentUser } from "@/server/auth/guards";
 import { getDb } from "@/server/db/client";
 import { env } from "@/server/env";
+import { listDemoAccounts, demoLoginCode } from "@/server/auth/demo";
+import { DemoLoginForm } from "./DemoLoginForm";
 import { DevLoginForm } from "./DevLoginForm";
 
 export const metadata: Metadata = { title: "Sign in" };
@@ -20,6 +22,8 @@ export default async function LoginPage({
   const next = safeNext(params.next);
   if (await getCurrentUser(getDb())) redirect(next);
   const devLogin = env().DEV_LOGIN_ENABLED;
+  // Demo sign-in appears only while DEMO_LOGIN_CODE is set and the demo students have been seeded.
+  const demoAccounts = demoLoginCode() ? await listDemoAccounts(getDb()) : [];
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-[480px] flex-col justify-between px-6 pt-20 pb-10">
@@ -52,6 +56,7 @@ export default async function LoginPage({
         >
           Sign in with Yale
         </a>
+        {demoAccounts.length > 0 ? <DemoLoginForm next={next} accounts={demoAccounts} /> : null}
         {devLogin ? <DevLoginForm next={next} /> : null}
         <p className="text-center text-sm text-muted-foreground">
           <Link href="/privacy" className="underline underline-offset-4">

@@ -42,6 +42,8 @@ const schema = z.object({
   BOT_WEBHOOK_URL: optionalString,
   MOCK_EXTERNAL: flag,
   DEV_LOGIN_ENABLED: flag,
+  /** Set to switch on demo sign-in (seeded demo accounts only). Works in production, unlike dev login. */
+  DEMO_LOGIN_CODE: optionalString,
   // A blank or invalid value falls back to the default instead of failing every request.
   ENRICH_MAX_JOBS_PER_HOUR: z.coerce.number().int().positive().catch(120),
   ENRICH_PERSON_TTL_DAYS: z.coerce.number().positive().catch(30),
@@ -78,6 +80,9 @@ function assertProductionConfig(e: z.infer<typeof schema>): void {
   const local = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(e.APP_URL);
   if (!e.APP_URL.startsWith("https://") && !local) {
     problems.push("APP_URL must be the https origin of the app (the session cookie and Yale CAS depend on it)");
+  }
+  if (e.DEMO_LOGIN_CODE && e.DEMO_LOGIN_CODE.length < 8) {
+    problems.push("DEMO_LOGIN_CODE must be at least 8 characters (or unset to switch demo sign-in off)");
   }
   if (problems.length > 0) throw new Error(`Unsafe production configuration: ${problems.join("; ")}.`);
 }

@@ -22,6 +22,7 @@ const PUBLIC_ALLOWLIST = new Set([
   "auth/cas/login/route.ts",
   "auth/cas/callback/route.ts",
   "auth/dev-login/route.ts", // refused unless DEV_LOGIN_ENABLED, and always in production
+  "auth/demo-login/route.ts", // off unless DEMO_LOGIN_CODE is set; needs the code; seeded demo accounts only
   "auth/logout/route.ts",
   "public/graph/[share_token]/route.ts", // gated by a 24-hour share token
 ]);
