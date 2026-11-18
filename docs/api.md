@@ -187,3 +187,19 @@ Returns: `{ matches: PersonCard[], created, strong_match?, friendship? }`
 Error codes: `user_not_linked`, `already_friends`
 
 <!-- END:bot-api -->
+
+## Bot-only routes (used by `messaging/`, not model tools)
+
+Same bearer secret and error shape as the Bot API. `messaging/src/backend/HttpBackend.ts` calls these
+alongside `whoami`, `link-phone`, `resolve-club`, `find-paths`, `intros` and `intros/{id}/sent`.
+
+| Method and path | Body / query | Returns |
+|---|---|---|
+| `POST /api/bot/club` | `{ club_id }` | `{ club: ClubCard, description }` |
+| `GET /api/bot/intros/{id}?phone=` | requester's phone | `{ intro: { intro_id, status, message, club, connector, created_at, response_url } }`; 404 unless that phone's user is the requester |
+| `POST /api/bot/intros/{id}/connector-phone` | `{ phone }` (requester's) | `{ phone }`: the connector's phone **only** if they are a NEPO user who verified it by texting the bot, and the intro is drafted or sent; otherwise `null`, and the requester sends it themselves |
+| `POST /api/bot/intros/{id}/respond` | `{ phone, decision: accept \| decline }` (connector's) | `{ status, requester_phone, requester_name, connector_first_name, club_name }`; `requester_phone` is null unless the requester linked one. Already answered → `409 invalid_state`. Does not call `BOT_WEBHOOK_URL` (the bot relays the answer itself) |
+
+When the connector answers in the app instead, the app posts `{ event: "intro.responded", intro_id, decision,
+requester_phone, connector_first_name, club_name }` to `BOT_WEBHOOK_URL` (the bot's `/webhooks/app`) with
+the same bearer secret.

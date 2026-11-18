@@ -249,6 +249,35 @@ describe("rules 7 and 8: nobody is contacted automatically; connectors are in co
   });
 });
 
+describe("the connector's phone (bot only)", () => {
+  test("released only to the requester's bot session for a confirmed friend with a verified phone; never for a one-sided add", async () => {
+    const { connectorPhoneForRequester } = await import("@/server/intros/service");
+    await makeUser(db, "phoner", { person: { firstName: "Phoebe", lastName: "Phoner" } });
+    await makeUser(db, "onesided", {
+      person: { firstName: "Ona", lastName: "Sided" },
+      user: { phoneE164: "+12035550161", phoneVerifiedAt: new Date() },
+    });
+    await makeUser(db, "mutual", {
+      person: { firstName: "Mu", lastName: "Tual" },
+      user: { phoneE164: "+12035550162", phoneVerifiedAt: new Date() },
+    });
+    await makeFriends(db, "phoner", "onesided", "pending"); // phoner added them; they never accepted
+    await makeFriends(db, "phoner", "mutual", "accepted");
+    await makeMember(db, "onesided", club.id);
+    await makeMember(db, "mutual", club.id);
+
+    const search = await searchPaths(db, { requesterNetid: "phoner", clubId: club.id, channel: "bot", limit: 5 });
+    const tieOf = (netid: string) => search.results.find((r) => r.connector.netid === netid)?.connector_tie;
+    expect([tieOf("mutual"), tieOf("onesided")]).toEqual(["friend", "added"]);
+
+    const toMutual = await createIntro(db, { requesterNetid: "phoner", searchId: search.search_id, connectorNetid: "mutual", message: "hi", channel: "bot" });
+    const toOneSided = await createIntro(db, { requesterNetid: "phoner", searchId: search.search_id, connectorNetid: "onesided", message: "hi", channel: "bot" });
+    expect(await connectorPhoneForRequester(db, toMutual.id, "phoner")).toBe("+12035550162");
+    expect(await connectorPhoneForRequester(db, toOneSided.id, "phoner")).toBeNull();
+    await expect(connectorPhoneForRequester(db, toMutual.id, "mutual")).rejects.toMatchObject({ code: "forbidden" });
+  });
+});
+
 describe("graph endpoint (section 9.4)", () => {
   test("first name and last initial only, opaque ids, requester-only share, 24-hour expiry", async () => {
     // A fresh requester: Jordan declined Maya earlier, which suppresses him for her.

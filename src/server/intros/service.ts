@@ -1,10 +1,11 @@
 import { randomBytes } from "node:crypto";
 import { and, asc, desc, eq, inArray, or } from "drizzle-orm";
+import { after } from "next/server";
 import { AppError } from "@/lib/errors";
 import { draftIntroMessage, type IntroTone } from "@/server/agents/introDrafter";
 import { toClubCard, type ClubCard } from "@/server/clubs/resolve";
 import type { Db } from "@/server/db/client";
-import { clubs, introEvents, intros, people, users, type Intro } from "@/server/db/schema";
+import { clubs, friendships, introEvents, intros, people, users, type Intro } from "@/server/db/schema";
 import { env } from "@/server/env";
 import { clubShort } from "@/server/paths/findPaths";
 import { getSearchResultFor } from "@/server/paths/service";
@@ -246,28 +247,42 @@ export async function introAction(
   return (await toViews(db, [updated], netid))[0];
 }
 
-/** Tell the bot a connector answered, so it can text the requester. Fire and forget, 5 s timeout. */
+/**
+ * Tell the bot a connector answered, so it can text the requester. Best effort, 5 s timeout.
+ * The request starts now; `after()` keeps a serverless function alive until it finishes,
+ * so it isn't frozen mid-request once the response has gone out.
+ */
 function notifyBot(payload: Record<string, unknown>): void {
   const url = env().BOT_WEBHOOK_URL;
   if (!url) return;
   const secret = env().BOT_API_SECRET;
-  void fetch(url, {
+  const request = fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...(secret ? { Authorization: `Bearer ${secret}` } : {}) },
     body: JSON.stringify(payload),
     signal: AbortSignal.timeout(5000),
-  }).catch(() => {
-    // Best effort by design; the requester still sees the answer in the app.
-  });
+  }).then(
+    () => undefined,
+    () => undefined, // Best effort by design; the requester still sees the answer in the app.
+  );
+  try {
+    after(() => request);
+  } catch {
+    // Outside a Next request scope (unit tests, scripts): the request still runs.
+  }
 }
 
-/** Connector only. Decline needs no reason. */
+/**
+ * Connector only. Decline needs no reason. `notify: false` when the bot itself
+ * relays the answer (the connector replied by text), so the requester isn't texted twice.
+ */
 export async function respondToIntro(
   db: Db,
   id: string,
   netid: string,
   decision: "accept" | "decline",
   note?: string,
+  opts: { notify?: boolean } = {},
 ): Promise<IntroView> {
   const row = await loadFor(db, id, netid);
   if (row.connectorNetid !== netid) throw new AppError("forbidden", "Only the person asked can answer.");
@@ -290,7 +305,7 @@ export async function respondToIntro(
   const [requesterUser] = await db.select().from(users).where(eq(users.netid, row.requesterNetid));
   const [club] = await db.select().from(clubs).where(eq(clubs.id, row.clubId));
   const [connector] = await db.select().from(people).where(eq(people.netid, row.connectorNetid));
-  if (requesterUser?.phoneE164 && requesterUser.phoneVerifiedAt) {
+  if (opts.notify !== false && requesterUser?.phoneE164 && requesterUser.phoneVerifiedAt) {
     notifyBot({
       event: "intro.responded",
       intro_id: row.id,
@@ -315,6 +330,59 @@ export async function getIntroByToken(
   await addEvent(db, row.id, "viewed", netid);
   const [intro] = await toViews(db, [row], netid);
   return { intro, events: await eventsFor(db, row.id, netid) };
+}
+
+/** Requester only: one intro, for the bot (which identifies the requester by phone). */
+export async function getIntroForRequester(db: Db, id: string, requesterNetid: string): Promise<IntroView> {
+  const row = await requesterIntro(db, id, requesterNetid);
+  return (await toViews(db, [row], requesterNetid))[0];
+}
+
+/**
+ * The one place another person's phone leaves the app, and only to the bot:
+ * the connector of an intro the requester owns, while it is still a draft or
+ * just sent, only if the two are confirmed friends (both sides agreed), and only
+ * if the connector signed up and verified that phone themselves by texting the
+ * bot. Otherwise null, and the requester sends the intro from their own phone.
+ *
+ * Confirmed friends only: a one-sided add is allowed as a first hop because the
+ * requester sends the message themselves (spec 11.1). It must not let NEPO's
+ * number text someone who never accepted the friendship.
+ */
+export async function connectorPhoneForRequester(db: Db, id: string, requesterNetid: string): Promise<string | null> {
+  const row = await requesterIntro(db, id, requesterNetid);
+  if (!["drafted", "sent"].includes(row.status)) return null;
+  const [friendship] = await db
+    .select({ id: friendships.id })
+    .from(friendships)
+    .where(
+      and(
+        eq(friendships.status, "accepted"),
+        or(
+          and(eq(friendships.requesterNetid, row.requesterNetid), eq(friendships.addresseeNetid, row.connectorNetid)),
+          and(eq(friendships.requesterNetid, row.connectorNetid), eq(friendships.addresseeNetid, row.requesterNetid)),
+        ),
+      ),
+    );
+  if (!friendship) return null;
+  const [connector] = await db.select().from(users).where(eq(users.netid, row.connectorNetid));
+  return connector?.phoneE164 && connector.phoneVerifiedAt ? connector.phoneE164 : null;
+}
+
+/**
+ * The connector answered by text. Records it without the bot webhook (the bot
+ * relays it itself) and returns what the bot needs to tell the requester.
+ */
+export async function respondToIntroByText(db: Db, id: string, connectorNetid: string, decision: "accept" | "decline") {
+  const intro = await respondToIntro(db, id, connectorNetid, decision, undefined, { notify: false });
+  const [requesterUser] = await db.select().from(users).where(eq(users.netid, intro.requester.netid));
+  return {
+    status: intro.status,
+    requester_phone: requesterUser?.phoneE164 && requesterUser.phoneVerifiedAt ? requesterUser.phoneE164 : null,
+    requester_name: intro.requester.name,
+    connector_first_name: intro.connector.first_name,
+    club_name: intro.club.name,
+  };
 }
 
 /** The bot's "did Jordan reply?" list. */

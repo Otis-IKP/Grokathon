@@ -8,7 +8,7 @@ The bot is one Node process on Tobi's Mac. Sendblue reaches it through a Cloudfl
 
 ## What a student can do right now
 
-They text the NEPO number with a club, for example "I want to be on YSIG" or "I want to be on sketch comedy". The bot calls Grok (`grok-4.7` at `https://api.x.ai/v1`), resolves the club, finds a warm path, and drafts an intro. The student replies "yes", taps a link that opens Messages with the draft filled in, or replies "send". The connector's phone gets the intro. That person replies YES or NO. The accepted or declined text goes back to the phone that asked.
+They text the NEPO number with a club, for example "I want to be on YSIG" or "I want to be on sketch comedy". The bot calls Claude (`claude-opus-5-5` through the Anthropic API, `ANTHROPIC_API_KEY` in `messaging/.env`), resolves the club, finds a warm path, and drafts an intro. The student replies "yes", taps a link that opens Messages with the draft filled in, or replies "send". The connector's phone gets the intro. That person replies YES or NO. The accepted or declined text goes back to the phone that asked.
 
 Any phone can ask. Any club name resolves. In the mock graph, Jordan Hale is a member of every club and Sam Okonkwo is on the board, so the live "send" has a connector whose number is real.
 
@@ -50,16 +50,16 @@ Web fallback, same process: open the tunnel origin in a browser and type the ask
 
 ## How the code is split
 
-- `src/index.ts` loads `.env`, checks that `GROK_MODEL` is in the xAI model list, and listens.
+- `src/index.ts` loads `.env`, checks the Anthropic key and that `CLAUDE_MODEL` exists, and listens (or is served by Vercel).
 - `src/app.ts` mounts health, `POST /admin/reset`, `GET /d/:introId`, web chat, and the Sendblue webhook.
-- `src/agent/handleMessage.ts` is the turn loop. Unknown phones become students. A connector's YES or NO is handled before Grok when that phone has a sent intro.
+- `src/agent/handleMessage.ts` is the turn loop. In mock mode unknown phones become students; in http mode they get the sign-up link and can link by texting the app's 6-digit code. A connector's YES or NO is handled before Claude only when the last text the bot sent that phone was the intro request (`src/agent/connectorAsks.ts`).
 - `src/agent/systemPrompt.ts` is the voice and the flow. Edit this to change how the bot talks.
 - `src/agent/tools.ts` is `resolve_club`, `get_club_info`, `find_paths`, `save_intro_draft`, and `send_intro`. `send_intro` only runs on a later turn, after an explicit "send".
-- `src/backend/MockBackend.ts` is the in-memory graph used tonight. `HttpBackend.ts` calls Otis's API when `BACKEND_MODE=http`.
+- `src/backend/MockBackend.ts` is the in-memory graph used tonight. `HttpBackend.ts` calls the app's `/api/bot/*` routes with the bot secret when `BACKEND_MODE=http`.
 - `src/transport/sendblue.ts` sends texts and receives the webhook. `DRY_RUN=true` logs them instead.
 - `messaging/README.md` is the backend contract Otis's API should match.
 
-`save_intro_draft` stores `requesterPhone` on the intro so a YES returns to the phone that asked, not to `DEMO_MAYA_PHONE`. That field is not sent to Grok, and the HTTP client does not post it to Otis's API. It is kept on the intro after the create call.
+`save_intro_draft` stores `requesterPhone` on the intro so a YES returns to the phone that asked, not to `DEMO_MAYA_PHONE`. That field is not sent to the model, and the HTTP client sends it to the app only as the caller's own phone. It is kept on the intro after the create call.
 
 ## What you can change
 
@@ -69,7 +69,7 @@ Web fallback, same process: open the tunnel origin in a browser and type the ask
 | A teammate's name | `DEMO_STUDENT_NAMES` in `src/backend/MockBackend.ts` |
 | Which real phone is the connector | `DEMO_JORDAN_PHONE` in `.env`, then restart `npm run dev` |
 | The fictional graph | `src/backend/seed.ts` |
-| Use Otis's API | `BACKEND_MODE=http` and `BACKEND_URL` |
+| Use Otis's API | `BACKEND_MODE=http`, `BACKEND_URL`, `BACKEND_API_SECRET` (the app's `BOT_API_SECRET`), `SIGNUP_URL` |
 
 Tests: `npm test` and `npm run typecheck` inside `messaging/`. From the repo root, `npm test` does the same thing.
 
@@ -80,11 +80,11 @@ Paste this into a new chat opened on the repo:
 ```
 You are finishing Yale NEPO with the team. The live demo bot is messaging/, not bot/. Read messaging/README.md and docs/TEAM_HANDOFF.md before you edit.
 
-Grok is the only model, through https://api.x.ai/v1. Do not add another provider. Do not commit messaging/.env or print API keys.
+The bot's model is Claude through the Anthropic API (switched from Grok on Nov 17). The app's research agents still use Grok. Do not commit messaging/.env or print API keys.
 
 The bot already texts, drafts, and sends. Keep that path working. Any phone can ask, any club name should resolve, and the connector's YES or NO must go back to the phone that requested the intro (intro.requesterPhone), not to DEMO_MAYA_PHONE.
 
-Otis owns the app and API. When his API is up, set BACKEND_MODE=http and BACKEND_URL. The contract is in messaging/README.md. Arden owns the website. The iMessage bot stays in messaging/.
+Otis owns the app and API. When his API is up, set BACKEND_MODE=http, BACKEND_URL and BACKEND_API_SECRET. The contract is in messaging/README.md. Arden owns the website. The iMessage bot stays in messaging/.
 
 Run npm test and npm run typecheck in messaging/ before you stop.
 ```

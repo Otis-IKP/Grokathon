@@ -39,5 +39,5 @@
     },
     { "source": "/(.*)", "destination": { "service": "app" } }
   ],
-  "crons": [{ "path": "/api/internal/jobs/tick", "schedule": "* * * * *" }]
+  "crons": [{ "path": "/api/internal/jobs/tick", "schedule": "0 9 * * *" }]
 }

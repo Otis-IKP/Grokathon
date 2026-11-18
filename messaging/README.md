@@ -4,7 +4,7 @@ A student texts the NEPO number, for example "I want to be on YSIG". The bot fin
 
 **This folder is the bot to demo.** `bot/` is an older Python scaffold. Do not start that one.
 
-Otis's app can replace the in-memory graph by setting `BACKEND_MODE=http`. Grok is called only through `https://api.x.ai/v1`.
+Otis's app can replace the in-memory graph by setting `BACKEND_MODE=http`. The model is Claude (`CLAUDE_MODEL`, default `claude-opus-5-5`), called through the Anthropic API with your own `ANTHROPIC_API_KEY`.
 
 ## Presenting tonight
 
@@ -51,7 +51,7 @@ Between runs, clear the in-memory session. The secret is `WEBHOOK_SECRET` in `.e
 curl -X POST "http://127.0.0.1:3000/admin/reset?secret=THE_WEBHOOK_SECRET"
 ```
 
-Web fallback, same process, same tunnel: open `PUBLIC_BASE_URL/` and type Maya's real phone, not the fictional `+15550000001`.
+Web fallback, same process, same tunnel: open `PUBLIC_BASE_URL/?secret=THE_WEBHOOK_SECRET` and type Maya's real phone, not the fictional `+15550000001`.
 
 ### If the tunnel or the bot died
 
@@ -70,7 +70,7 @@ sendblue webhooks add --type receive "https://NEW_URL/webhooks/sendblue?secret=T
 
 Put that origin in `PUBLIC_BASE_URL` with no trailing slash, and restart `npm run dev` so it reloads `.env`. `tsx watch` does not reload env by itself. Leave cloudflared running. Do not run `sendblue webhooks set-receive`. That command does not exist.
 
-Keys are already in `.env`: `XAI_API_KEY`, `SENDBLUE_API_KEY_ID`, `SENDBLUE_API_SECRET`. Do not commit that file. `DRY_RUN` must stay `false` for real iMessage.
+Keys go in `.env`: `ANTHROPIC_API_KEY`, `SENDBLUE_API_KEY_ID`, `SENDBLUE_API_SECRET`. An old `.env` with only `XAI_API_KEY` will not start; add `ANTHROPIC_API_KEY`. Do not commit that file. `DRY_RUN` must stay `false` for real iMessage.
 
 ## Setup
 
@@ -89,11 +89,11 @@ npm run dev
 npm run simulate -- +15550000001
 ```
 
-Web fallback (no iMessage): open `http://localhost:3000/` and use Maya's phone, `+15550000001`.
+Web fallback (no iMessage): open `http://localhost:3001/?secret=THE_WEBHOOK_SECRET` and use Maya's phone, `+15550000001`. The chat refuses requests without the secret, because it can act as any phone.
 
 ## What you need accounts for
 
-- **xAI key** (`XAI_API_KEY` from [console.x.ai](https://console.x.ai)). Required for any live Grok reply, including `simulate` and `POST /chat`. Tests do not call xAI.
+- **Anthropic API key** (`ANTHROPIC_API_KEY` from [platform.claude.com](https://platform.claude.com)). Required for any live reply, including `simulate` and `POST /chat`. Tests do not call the API. Startup checks the key and `CLAUDE_MODEL` and logs a warning if either is wrong.
 - **Sendblue**. Required only when `DRY_RUN=false` and you want real iMessage. Not required for tests, the REPL, or the web chat while dry-run is on.
 - **A tunnel** (cloudflared or ngrok) only when Sendblue has to reach your laptop.
 
@@ -109,35 +109,40 @@ when run with `npm run dev`.
 - Sendblue webhook: `https://<domain>/bot/webhooks/sendblue?secret=THE_WEBHOOK_SECRET`
 - `PUBLIC_BASE_URL=https://<domain>/bot` (no trailing slash), so draft links become `/bot/d/<introId>`
 - Admin reset: `POST https://<domain>/bot/admin/reset?secret=THE_WEBHOOK_SECRET`
-- Web chat: `https://<domain>/bot/`
-- Set the same variables as `.env` in the Vercel project (`XAI_API_KEY`, `WEBHOOK_SECRET`, the Sendblue keys, ...).
+- Web chat: `https://<domain>/bot/?secret=THE_WEBHOOK_SECRET`
+- Set the same variables as `.env` in the Vercel project (`ANTHROPIC_API_KEY`, `WEBHOOK_SECRET`, the Sendblue keys, ...).
+- With `BACKEND_MODE=http`: `BACKEND_URL=https://<domain>`, `BACKEND_API_SECRET` = the app's `BOT_API_SECRET`, `SIGNUP_URL=https://<domain>/login`, and the app's `BOT_WEBHOOK_URL=https://<domain>/bot/webhooks/app`.
 
-Sessions, pending intros and the mock graph's intros live in process memory. On Vercel that memory can be
-lost or split between function instances, so a conversation may forget its pending intro. The Mac plus
-tunnel setup above has no such problem. Persist sessions before relying on the hosted bot.
+Sessions, pending intros, the YES/NO window and the mock graph's intros live in process memory. On Vercel that memory can be
+lost or split between function instances, so a conversation may forget its pending intro, and a connector's YES may go to the
+model instead (they can still answer at the app link in the request). The Sendblue webhook also answers 200 before processing
+the message, and Vercel may stop the function once the response is sent. The Mac plus tunnel setup above has neither problem.
+Persist sessions and process the webhook before responding (or with `waitUntil`) before relying on the hosted bot.
 
 ## Backend contract
 
-Base URL is `BACKEND_URL`. Each call times out after 4 seconds. A 404 on a single-resource GET is "not found". Any other non-2xx is an error.
+With `BACKEND_MODE=http` the bot calls the NEPO app's Bot API at `BACKEND_URL`, sending
+`Authorization: Bearer {BACKEND_API_SECRET}` (the app's `BOT_API_SECRET`) and identifying every texter by
+phone. `src/backend/HttpBackend.ts` is the client; the app documents the routes in `docs/api.md` at the repo root.
 
-- `GET /users/by-phone/:e164` → User or 404
-- `GET /users/:id` → User or 404
-- `GET /users/:id/phone` → `{ "phone": "+1..." }` (internal, only for sending an intro)
-- `GET /clubs/resolve?q=` → `[{ "club", "confidence" }]` where confidence is `exact`, `alias`, or `fuzzy`
-- `GET /clubs/:id` → Club or 404
-- `GET /paths?userId=&clubId=` → `PathResult[]` (no phone numbers)
-- `POST /intros` body `{ requesterId, connectorId, clubId, message }` → Intro
-- `PATCH /intros/:id` body `{ "status" }` → Intro
-- `GET /intros/:id` → Intro or 404
-- `GET /intros?connectorId=&status=sent` → `Intro[]`
+| Bot needs | App route |
+| --- | --- |
+| Who is texting | `POST /api/bot/whoami` (unknown phone → sign-up text) |
+| Link a phone with the app's 6-digit code | `POST /api/bot/link-phone` |
+| Match a club / club details | `POST /api/bot/resolve-club`, `POST /api/bot/club` |
+| Paths | `POST /api/bot/find-paths` (returns a `search_id` the intro is created from) |
+| Save a draft / read it / mark it sent | `POST /api/bot/intros`, `GET /api/bot/intros/{id}?phone=`, `POST /api/bot/intros/{id}/sent` |
+| Connector's phone, to text the intro | `POST /api/bot/intros/{id}/connector-phone`: only for a connector who linked their own phone; otherwise null and the student sends it themselves |
+| Connector replied YES/NO by text | `POST /api/bot/intros/{id}/respond` |
+| Connector answered in the app | the app posts to this bot's `POST /webhooks/app` (same bearer secret), and the bot texts the requester |
 
-That last list route is how a connector's YES/NO text is matched after a restart. Path results must not include phone numbers. Only `GET /users/:id/phone` returns one, and only the bot uses it.
-
-User shape: `{ id, name, phone, classYear?, college?, suggestible }`.
+A connector's YES/NO counts only right after the bot texted them the request; the request text also
+carries the app link (`/i/{token}`) so they can answer there instead. The tap-to-send draft link
+(`/d/{introId}`) works only while the intro is a draft and for 24 hours.
 
 ## Demo checklist
 
-1. `cp .env.example .env`. Add the xAI key from console.x.ai. Set `DRY_RUN=true` until step 2 is done.
+1. `cp .env.example .env`. Add your Anthropic API key. Set `DRY_RUN=true` until step 2 is done.
 2. `npm i -g @sendblue/cli && sendblue setup`, then `sendblue show-keys` and `sendblue lines`. Fill in `SENDBLUE_API_KEY_ID`, `SENDBLUE_API_SECRET`, and `SENDBLUE_FROM_NUMBER`. Set `DRY_RUN=false`.
 3. Free sandbox limitation: every phone that will text or receive texts must first be added with `sendblue add-contact +1...`, and that person must text the NEPO number once ("hi") before the bot can message them. Do this for the Maya phone and the Jordan phone before the demo.
 4. Set `WEBHOOK_SECRET` to a random string. Start a tunnel (`npx cloudflared tunnel --url http://localhost:3000` or ngrok). Then run `sendblue webhooks add --type receive "https://<tunnel>/webhooks/sendblue?secret=<WEBHOOK_SECRET>"`. Set `PUBLIC_BASE_URL` to the tunnel origin with no trailing slash and restart. If cloudflared restarts, the URL changes and this step has to be repeated. Keep the Mac awake with `caffeinate -dimsu`.
@@ -148,7 +153,7 @@ Seed story, all fictional: Maya Chen (`+15550000001`) asks about YSIG. Jordan Ha
 
 ## Change it
 
-Open this repo in Cursor or Claude and point it at `messaging/`. Grok is the only model, through `https://api.x.ai/v1`. Leave `bot/` alone.
+Open this repo in Cursor or Claude and point it at `messaging/`. The model call is in `src/agent/handleMessage.ts`. Leave `bot/` alone.
 
 | Change | Where |
 | --- | --- |
@@ -157,7 +162,9 @@ Open this repo in Cursor or Claude and point it at `messaging/`. Grok is the onl
 | The fictional friends and clubs | `src/backend/seed.ts` |
 | A club the bot has never heard of | `clubFromQuery` in `src/backend/MockBackend.ts` |
 | When "send" is allowed | `send_intro` in `src/agent/tools.ts` |
-| Where the YES/NO reply is delivered | `requesterPhone` on the intro, set in `save_intro_draft`, read in `maybeHandleConnectorReply` |
-| Otis's real API instead of the mock graph | `BACKEND_MODE=http` and `BACKEND_URL`. The contract is the list above. |
+| Where the YES/NO reply is delivered | `requesterPhone` on the intro, set in `save_intro_draft`, read in `answerAsConnector` |
+| When a YES/NO counts as an intro answer | `src/agent/connectorAsks.ts`: only if the last text the bot sent that phone was the intro request |
+| Otis's real API instead of the mock graph | `BACKEND_MODE=http`, `BACKEND_URL`, `BACKEND_API_SECRET`, `SIGNUP_URL`. The contract is the section above. |
+| Model and thinking depth | `CLAUDE_MODEL`, `CLAUDE_EFFORT` in `.env` |
 
 `docs/TEAM_HANDOFF.md` is the longer note for whoever is finishing the demo. The shared Drive copy, with the phone map, is [NEPO bot handoff](https://docs.google.com/document/d/17YLnLekIi-4NvDZzLEvBV5DRbs4_WcV71G8LaDs5AUw/edit). Phone numbers stay out of this public repo.

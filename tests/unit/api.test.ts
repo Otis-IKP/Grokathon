@@ -38,6 +38,10 @@ vi.mock("@/server/auth/session", () => ({
   }),
 }));
 
+import * as botClub from "@/app/api/bot/club/route";
+import * as botConnectorPhone from "@/app/api/bot/intros/[id]/connector-phone/route";
+import * as botIntro from "@/app/api/bot/intros/[id]/route";
+import * as botRespond from "@/app/api/bot/intros/[id]/respond/route";
 import * as botDraft from "@/app/api/bot/draft-intro/route";
 import * as botFindPaths from "@/app/api/bot/find-paths/route";
 import * as botFriendsAdd from "@/app/api/bot/friends/add/route";
@@ -259,6 +263,53 @@ describe("the bot conversation (section 9.3)", () => {
     expect(look.body).toMatchObject({ created: false, strong_match: { netid: "demo_sam" } });
     const made = await bot(botFriendsAdd.POST as Handler, { phone: "+12035550101", query: "Sam Wu", confirm: true });
     expect(made.body).toMatchObject({ created: true, friendship: { status: "pending", invite_url: "http://localhost:3000/login?ref=demo_maya" } });
+  });
+
+  test("bot-only routes: club info, reading an intro, the connector's phone for linked users only, answering by text", async () => {
+    const MAYA = "+12035550101";
+    const JORDAN = "+12035550102";
+    await db.update(users).set({ phoneE164: JORDAN, phoneVerifiedAt: new Date() }).where(eq(users.netid, "demo_jordan"));
+    await db.update(users).set({ phoneE164: "+12035550103", phoneVerifiedAt: new Date() }).where(eq(users.netid, "demo_priya"));
+
+    const ysig = (await bot(botResolveClub.POST as Handler, { text: "YSIG" })).body.club;
+    const club = await bot(botClub.POST as Handler, { club_id: ysig.id });
+    expect(club.body.club).toMatchObject({ id: ysig.id, slug: "ysig" });
+    expect((await call(botClub.POST as Handler, { body: { club_id: ysig.id } })).status).toBe(401);
+
+    const paths = (await bot(botFindPaths.POST as Handler, { phone: MAYA, club_id: ysig.id })).body;
+    const created = (
+      await bot(botIntros.POST as Handler, { phone: MAYA, search_id: paths.search_id, connector_netid: "demo_jordan", message: "Hey Jordan" })
+    ).body;
+    const id = created.intro_id;
+
+    const read = await call(botIntro.GET as Handler, { url: `http://localhost:3000/api/bot/intros/${id}?phone=%2B12035550101`, headers: BOT, params: { id } });
+    expect(read.body.intro).toMatchObject({ intro_id: id, status: "drafted", message: "Hey Jordan", connector: { netid: "demo_jordan" } });
+    expect(JSON.stringify(read.body)).not.toContain(JORDAN);
+    const notTheirs = await call(botIntro.GET as Handler, { url: `http://localhost:3000/api/bot/intros/${id}?phone=%2B12035550103`, headers: BOT, params: { id } });
+    expect(notTheirs.status).toBe(404);
+
+    // The connector's phone: only to the requester's bot session, only while the connector's phone is verified.
+    expect((await bot(botConnectorPhone.POST as Handler, { phone: MAYA }, { id })).body).toEqual({ phone: JORDAN });
+    expect((await bot(botConnectorPhone.POST as Handler, { phone: "+12035550103" }, { id })).status).toBe(404);
+    await db.update(users).set({ phoneVerifiedAt: null }).where(eq(users.netid, "demo_jordan"));
+    expect((await bot(botConnectorPhone.POST as Handler, { phone: MAYA }, { id })).body).toEqual({ phone: null });
+    await db.update(users).set({ phoneVerifiedAt: new Date() }).where(eq(users.netid, "demo_jordan"));
+
+    await bot(botIntroSent.POST as Handler, { phone: MAYA }, { id });
+    // The requester can't answer their own intro.
+    expect((await bot(botRespond.POST as Handler, { phone: MAYA, decision: "accept" }, { id })).status).toBe(403);
+    const answered = await bot(botRespond.POST as Handler, { phone: JORDAN, decision: "accept" }, { id });
+    expect(answered.body).toEqual({
+      status: "accepted",
+      requester_phone: MAYA,
+      requester_name: "Maya Chen",
+      connector_first_name: "Jordan",
+      club_name: ysig.name,
+    });
+    const again = await bot(botRespond.POST as Handler, { phone: JORDAN, decision: "decline" }, { id });
+    expect([again.status, again.body.error.code]).toEqual([409, "invalid_state"]);
+    // Once answered, the phone is no longer handed out.
+    expect((await bot(botConnectorPhone.POST as Handler, { phone: MAYA }, { id })).body).toEqual({ phone: null });
   });
 
   test("docs/bot-tools.json is generated from the same schemas the routes validate with", async () => {

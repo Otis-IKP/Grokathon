@@ -4,7 +4,7 @@ Warm intros into Yale clubs. A student says which club they want; NEPO finds the
 introduce them, drafts the ask, and tracks the intro.
 
 This repository is the web app and backend (Otis's part): identity, the friend graph, the club graph,
-path finding, intros, the Bot API that Tobi's Grok iMessage agent calls, and the mobile-first UI.
+path finding, intros, the Bot API that Tobi's iMessage agent (`messaging/`, now on Claude) calls, and the mobile-first UI.
 The full build spec is in [Grokathon-Otis-App.md](Grokathon-Otis-App.md).
 
 ## Run it locally
@@ -77,17 +77,21 @@ friend/like data the API returns. xAI has not been called with a real key yet; s
 2. Set `APP_URL`, `SESSION_SECRET` (32+ random characters), `BOT_API_SECRET`, `CRON_SECRET`,
    `BOT_PHONE_DISPLAY`, `ADMIN_NETIDS`, `YALIES_API_KEY`, `XAI_API_KEY`, `XAI_MODEL`, and `MOCK_EXTERNAL=0`.
    Leave `DEV_LOGIN_ENABLED` unset. Optional: `WEBSITE_ORIGIN` (Arden's site, for CORS on the graph
-   endpoint) and `BOT_WEBHOOK_URL` (Tobi's endpoint for "your connector replied").
+   endpoint) and `BOT_WEBHOOK_URL` (the bot's `/webhooks/app` route, e.g. `{APP_URL}/bot/webhooks/app` with the
+   services setup below, so the requester gets a text when a connector answers in the app).
 3. Run `pnpm db:migrate` and `pnpm db:seed` against that database from your machine.
 4. `vercel.json` deploys three services in one project: this app (every host, catch-all), the iMessage bot
    from `messaging/` under `/bot`, and the website from `website/` on the `yalenepo.xyz` hosts. `bot/` is not
-   deployed. It also schedules `/api/internal/jobs/tick` every minute (Vercel sends `CRON_SECRET` as the
-   bearer token). Per-minute crons need a paid Vercel plan; on the free plan jobs still run right after
-   the request that queued them, and you can hit the tick endpoint from any external cron.
+   deployed. It also schedules `/api/internal/jobs/tick` once a day at 09:00 UTC (Vercel sends `CRON_SECRET` as
+   the bearer token), because the Hobby plan allows only daily crons. Jobs mostly run right after the
+   request that queued them; the daily tick picks up retries and anything left over. On a paid plan, set
+   the schedule back to `* * * * *`, or hit the tick endpoint from any external cron.
 
 ## For Tobi (bot) and Arden (website)
 
-- **Tobi:** paste `docs/bot-tools.json` into the Grok agent. `docs/api.md` maps each tool to its endpoint.
+- **Tobi:** `messaging/` talks to this API when `BACKEND_MODE=http` (`BACKEND_URL` = this app's origin,
+  `BACKEND_API_SECRET` = `BOT_API_SECRET`). `docs/api.md` lists every route it uses, including the bot-only
+  ones; `docs/bot-tools.json` remains the generic tool set for any other agent.
   Every call sends `Authorization: Bearer {BOT_API_SECRET}`. `./scripts/bot-smoke.sh` shows the whole
   conversation as curl calls. You also need the deployed base URL and the secret from Otis.
 - **Arden:** link "Sign in" to `{APP_URL}/login`. For the path graph, the requester calls
@@ -147,7 +151,7 @@ Luma: https://luma.com/dis51jq2
 
 | Person | Role |
 |--------|------|
-| **Tobi** | Grok bot + iMessage (`messaging/`). `bot/` is an older scaffold. Do not demo it. |
+| **Tobi** | iMessage bot (`messaging/`, Claude via the Anthropic API). `bot/` is an older scaffold. Do not demo it. |
 | **Otis** | App + backend API |
 | **Arden** | Website |
 

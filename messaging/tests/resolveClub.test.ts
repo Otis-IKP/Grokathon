@@ -42,7 +42,7 @@ describe("resolveClub", () => {
     const created = await top("sketch comedy");
     expect(created?.confidence).toBe("exact");
     expect(created?.club.name).toBe("Sketch Comedy");
-    const paths = await backend.findPaths("maya", created?.club.id ?? "");
+    const paths = await pathsFor(backend, "maya", created?.club.id ?? "");
     expect(paths[0]?.connector.name).toBe("Jordan Hale");
   });
 
