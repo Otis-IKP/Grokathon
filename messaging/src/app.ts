@@ -32,6 +32,15 @@ export function createApp(options?: { backend?: Backend }): express.Express {
       : new MockBackend(process.env));
   setBackend(backend);
   const app = express();
+  // On Vercel the bot is served under /bot (see vercel.json) and the prefix reaches us intact,
+  // so strip it here. Locally there is no prefix and this is a no-op.
+  app.use((req, _res, next) => {
+    if (req.url === "/bot" || req.url.startsWith("/bot/") || req.url.startsWith("/bot?")) {
+      req.url = req.url.slice(4) || "/";
+      if (req.url.startsWith("?")) req.url = `/${req.url}`;
+    }
+    next();
+  });
   app.use(express.json());
   app.get("/health", (_req, res) => {
     res.json({ ok: true, backend: config.BACKEND_MODE, dryRun: config.DRY_RUN });
