@@ -64,6 +64,8 @@ test("the demo: sign in, link phone, add a friend, LinkedIn clubs, find a path, 
 
   // 5. "I want to be on YSIG": two warm paths, Jordan first, then Priya through Sam.
   await maya.goto("/");
+  // The home screen opens Messages addressed to the bot's number.
+  await expect(maya.getByRole("link", { name: "Text NEPO" })).toHaveAttribute("href", "sms:+12035550100");
   await maya.getByRole("combobox").fill("ysig");
   await maya.getByRole("option", { name: /Yale Student Investment Group/ }).click();
   await expect(maya).toHaveURL(/\/paths\//);

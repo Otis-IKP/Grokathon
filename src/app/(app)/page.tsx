@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, MessageSquare } from "lucide-react";
 import { Page, SectionTitle } from "@/components/app/Page";
 import { PersonAvatar } from "@/components/app/PersonAvatar";
 import { ClubSearch } from "@/components/home/ClubSearch";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { pageUser } from "@/server/auth/page";
+import { env } from "@/server/env";
 import { friendCounts } from "@/server/friends/service";
 import { listIntros } from "@/server/intros/service";
 import { recentSearches } from "@/server/paths/service";
@@ -19,10 +20,39 @@ export default async function Home() {
     listIntros(db, netid, "incoming"),
   ]);
   const waiting = incoming.filter((i) => i.status === "sent");
+  const botPhone = env().BOT_PHONE_DISPLAY;
+  // The bot recognises a texter by their linked phone; anyone else is sent back to sign up.
+  const phoneLinked = Boolean(me.user.phoneE164 && me.user.phoneVerifiedAt);
 
   return (
     <Page title="Which club do you want in on?">
       <ClubSearch />
+
+      <div className="mt-5 rounded-2xl border p-4">
+        <div className="font-medium">Or just text NEPO</div>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {phoneLinked
+            ? `Tell the bot which club you want, like "I want to be on YSIG". It finds your path and drafts the ask.`
+            : "The bot answers once your phone is linked, so it knows the text is from you."}
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          {/* A plain sms: link. On an iPhone or a Mac it opens Messages addressed to the bot. */}
+          <a
+            href={`sms:${botPhone.replace(/[^\d+]/g, "")}`}
+            className={cn(buttonVariants({ variant: phoneLinked ? "default" : "outline", size: "tap" }))}
+          >
+            <MessageSquare aria-hidden />
+            Text NEPO
+          </a>
+          {phoneLinked ? (
+            <span className="text-sm text-muted-foreground">{botPhone}</span>
+          ) : (
+            <Link href="/me" className="text-sm font-medium text-primary underline underline-offset-4">
+              Link your phone first
+            </Link>
+          )}
+        </div>
+      </div>
 
       {!me.user.onboardingDoneAt ? (
         <Link href="/onboarding" className="mt-5 flex min-h-14 items-center gap-3 rounded-2xl border bg-muted/50 px-4 py-3">
